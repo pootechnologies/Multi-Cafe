@@ -534,7 +534,7 @@ class IsTenantUser(permissions.BasePermission):
             return False
 class TenantGroupCreateView(generics.ListCreateAPIView):
     serializer_class = GroupSerializer
-    permission_classes = [permissions.IsAuthenticated, IsTenantOwnerOrAdmin]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantOwnerOrAdmin]
 
     # to get group name and permissions list from request data, create group and assign permissions within tenant schema context
     def get_queryset(self):
@@ -575,7 +575,7 @@ class TenantGroupCreateView(generics.ListCreateAPIView):
 class TenantUserCreateView(generics.ListCreateAPIView):
     serializer_class = TenantUserCreateSerializer
     queryset = UserAccount.objects.order_by('id')
-    permission_classes = [permissions.IsAuthenticated, IsTenantOwnerOrAdmin]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantOwnerOrAdmin]
     def get_queryset(self):
         tenant = getattr(self.request, 'tenant', None)
         return UserAccount.objects.filter(tenants=tenant)
@@ -622,7 +622,7 @@ class TenantUserCreateView(generics.ListCreateAPIView):
 
 class TenantUserUpdateView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = TenantUserUpdateSerializer
-    permission_classes = [permissions.IsAuthenticated, IsTenantOwnerOrAdmin]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantOwnerOrAdmin]
 
     # lookup by public user id or pk; ensure the user belongs to this tenant
     def get_object(self):
