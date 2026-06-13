@@ -335,6 +335,9 @@ class ProvisionTenantSerializer(serializers.Serializer):
         #    paid_until = timezone.now().date() + timezone.timedelta(days=14)
         #  else:
         #   paid_until = None
+        if not on_trial:
+            on_trial = True
+
         if on_trial:
             paid_until = timezone.now().date() + timezone.timedelta(days=7)
         elif not on_trial and not paid_until:
