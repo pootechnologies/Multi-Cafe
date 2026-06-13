@@ -220,8 +220,6 @@ USE_TZ = True
 CHAPA_PUBLIC_KEY = "CHAPUBK_TEST-V6GJI42oSMRKHrkQgP5P8gH2I34BM3FD"
 CHAPA_SECRET_KEY ="CHASECK_TEST-vrVjpSUyuzegPSk04JSpKXSWyYOy8YYm"
 CHAPA_BASE_URL = "https://api.chapa.co/v1"
-CHAPA_VERIFY_URL = f"{CHAPA_BASE_URL}/transaction/verify/<tx_ref>"
-CHAPA_WEBHOOK_URL = "http://localhost:8000/api/payments/chapa/webhook/"
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.0/howto/static-files/
@@ -238,17 +236,7 @@ STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles') # Where files go when collected
 
 # Enable WhiteNoise compression and caching
-# STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-
-# Modern Django 5.2 Storage Configurations
-STORAGES = {
-    "default": {
-        "BACKEND": "django.core.files.storage.FileSystemStorage",
-    },
-    "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-    },
-}
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 MEDIA_URL = '/media/'
 # This path is relative to the root of your project inside the Docker container
