@@ -12,8 +12,8 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 
 from pathlib import Path
 import os
-# import dj_database_url
-# from decouple import config
+import dj_database_url
+from decouple import config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -26,9 +26,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-1+wss@qj54==i6=5*q^icmjuur@ss*4ls2pm#gzbiihwih94rv'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["*.cafe.pootechnologies.tech", ".cafe.pootechnologies.tech", "cafe.pootechnologies.tech", "45.93.136.48"]
 
 
 # Application definition
@@ -45,6 +45,7 @@ SHARED_APPS = [
     'rest_framework',
     'tenant_users.permissions',
     'tenant_users.tenants',
+    'corsheaders',
 ]
 
 TENANT_APPS = [
@@ -59,6 +60,7 @@ INSTALLED_APPS = list(SHARED_APPS) + [
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django_tenants.middleware.main.TenantMainMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
@@ -75,6 +77,7 @@ MIDDLEWARE += [
     "tenants.middleware.TenantPaymentRequiredMiddleware",
 ]
 
+CORS_ALLOW_ALL_ORIGINS = True 
 ROOT_URLCONF = 'multi_caffe_management.urls'
 
 PUBLIC_SCHEMA_URLCONF = 'multi_caffe_management.urls_public'
@@ -102,27 +105,43 @@ WSGI_APPLICATION = 'multi_caffe_management.wsgi.application'
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
 
+# 1. Parse the Render URL
+# DATABASES = {
+#     'default': dj_database_url.parse(config('DATABASE_URL'))
+# }
 
+# # 2. OVERRIDE the engine to use django-tenants (Crucial Step)
+# DATABASES['default']['ENGINE'] = 'django_tenants.postgresql_backend'
+
+# # 3. Set SSL options for Render
+# DATABASES['default']['OPTIONS'] = {
+#     'sslmode': 'require',
+# }
 
 DATABASES = {
-    "default": {
-        "ENGINE": "django_tenants.postgresql_backend",  # changed
-        "NAME": "multi_caffe_management",
-        "USER": "postgres",
-        "PASSWORD": "admin",
-        "HOST": "localhost",
-        "PORT": "5432",
+    'default': {
+        "ENGINE": "django_tenants.postgresql_backend",
+        'NAME': os.environ.get('DB_NAME', 'your_local_db_name'),
+        'USER': os.environ.get('DB_USER', 'your_local_user'),
+        'PASSWORD': os.environ.get('DB_PASSWORD', 'your_local_password'),
+        'HOST': os.environ.get('DB_HOST', 'localhost'),
+        'PORT': os.environ.get('DB_PORT', '5432'),
+        # 'OPTIONS': {
+        #     'charset': 'utf8mb4',
+        #     'init_command': "SET NAMES 'utf8mb4'",
+        # },
     }
 }
+
+
 
 # new
 DATABASE_ROUTERS = [
     "django_tenants.routers.TenantSyncRouter",
 ]
 
-BASE_DOMAIN = "localhost"
+BASE_DOMAIN = "cafe.pootechnologies.tech"
 PUBLIC_SCHEMA_NAME = "public"
-
 
 
 # TENANT_USERS_DOMAIN defines from which domain the users should be provisioned. This should match the domain of the public tenant.
@@ -151,6 +170,24 @@ AUTH_PASSWORD_VALIDATORS = [
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
 ]
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'level': 'DEBUG',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+    },
+}
 
 from datetime import timedelta
 
@@ -198,10 +235,24 @@ CHAPA_WEBHOOK_URL = "http://localhost:8000/api/payments/chapa/webhook/"
 # STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]  # Additional directories to look for static files
 
 STATIC_URL = '/static/'
-# STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles') # Where files go when collected
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles') # Where files go when collected
 
 # Enable WhiteNoise compression and caching
 # STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+# Modern Django 5.2 Storage Configurations
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
+
+MEDIA_URL = '/media/'
+# This path is relative to the root of your project inside the Docker container
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # HTTPS Settings
 # SESSION_COOKIE_SECURE = True
