@@ -52,8 +52,8 @@ class CategorySerializer(serializers.ModelSerializer):
         return super().create(validated_data) 
 
 class ProductGetSerializer(serializers.ModelSerializer):
-    category_name = serializers.CharField(source='category.name', read_only=True)
-    supplier_name = serializers.CharField(source='supplier.name', read_only=True)
+    category_name = serializers.CharField(source='category.name', read_only=True, required=False)
+    supplier_name = serializers.CharField(source='supplier.name', read_only=True, required=False)
     # bundle_components = BundleSerializer(many=True, read_only=True)
 
     class Meta:
@@ -64,11 +64,11 @@ class ProductGetSerializer(serializers.ModelSerializer):
             UniqueConstraint(fields=['name', 'category_name', 'specification'], name='unique_product_category_specification')
         ]
 class ProductSerializer(serializers.ModelSerializer):
-    category_name = serializers.CharField(source='category.name', read_only=True)
+    category_name = serializers.CharField(source='category.name', read_only=True, required=False)
     # category write_only field to accept category id during creation/updation
-    category = serializers.PrimaryKeyRelatedField(queryset=Category.objects.all(), write_only=True)
-    supplier = serializers.PrimaryKeyRelatedField(queryset=Supplier.objects.all(), write_only=True)
-    supplier_name = serializers.CharField(source='supplier.name', read_only=True)
+    category = serializers.PrimaryKeyRelatedField(queryset=Category.objects.all(), write_only=True, required=False)
+    supplier = serializers.PrimaryKeyRelatedField(queryset=Supplier.objects.all(), write_only=True, required=False)
+    supplier_name = serializers.CharField(source='supplier.name', read_only=True, required=False)
     # bundle_components = BundleSerializer(many=True, read_only=True)
 
     class Meta:
