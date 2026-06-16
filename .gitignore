@@ -23,5 +23,5 @@ TestResults.xml
 venv_caffe
 .env
 # settings
-multi_caffe_management/settings.py
+./multi_caffe_management/settings.py
 
