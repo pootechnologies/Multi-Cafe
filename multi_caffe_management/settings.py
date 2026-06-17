@@ -28,7 +28,7 @@ SECRET_KEY = 'django-insecure-1+wss@qj54==i6=5*q^icmjuur@ss*4ls2pm#gzbiihwih94rv
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = ["*.cafe.pootechnologies.tech", ".cafe.pootechnologies.tech", "cafe.pootechnologies.tech", "45.93.136.48"]
+ALLOWED_HOSTS = ["*.dev-cafe.pootechnologies.tech", ".dev-cafe.pootechnologies.tech", "cafe.pootechnologies.tech", "45.93.136.48"]
 
 
 # Application definition
@@ -140,7 +140,7 @@ DATABASE_ROUTERS = [
     "django_tenants.routers.TenantSyncRouter",
 ]
 
-BASE_DOMAIN = "cafe.pootechnologies.tech"
+BASE_DOMAIN = "dev-cafe.pootechnologies.tech"
 PUBLIC_SCHEMA_NAME = "public"
 
 
