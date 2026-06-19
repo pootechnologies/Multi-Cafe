@@ -88,8 +88,8 @@ urlpatterns = [
     path('category/<int:pk>/', CategoryRetrieveUpdateDestroyView.as_view(), name='category-detail'),
     path('products/', ProductListCreateView.as_view(), name='product-list-create'),
     path('products/<int:pk>/', ProductRetrieveUpdateDestroyView.as_view(), name='product-detail'),
-    path('orders', OrderListCreatView.as_view(), name='orders-create'),
-    path('orders/<pk>', OrderDetailView.as_view(), name='orders-retrieve'),
+    path('orders/', OrderListCreatView.as_view(), name='orders-create'),
+    path('orders/<int:pk>/', OrderDetailView.as_view(), name='orders-retrieve'),
 
     path('orderitems', OrderItemListCreateView.as_view(), name='orders-items-list'),
     path('orderitems/<pk>', OrderItemDetailView.as_view(), name='orders-items-retrieve'),

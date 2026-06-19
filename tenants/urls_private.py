@@ -17,6 +17,8 @@ urlpatterns = [
     path('users/permissions/', views.UserPermissionsView.as_view(), name='user-permissions'),
     # list all available permissions
     path('tenant/permissions/', views.AvailablePermissionsView.as_view(), name='available-permissions'),
+    path('tenant/permissions/current/', views.CurrentTenantPermissionsView.as_view(), name='current-tenant-permissions'),
+    path('tenant/permission-protected/', views.TenantPermissionProtectedView.as_view(), name='tenant-permission-protected'),
     
 ]
 urlpatterns += [

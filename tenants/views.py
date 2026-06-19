@@ -13,9 +13,13 @@ from datetime import timedelta
 from django.http import Http404, JsonResponse
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
-from rest_framework import generics, status
+from rest_framework import generics, status, permissions
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from .models import SubscriptionPlan, Tenant, UserAccount, TenantPayment
+from .user_permission import IsTenantOwnerOrAdmin, IsTenantUser, HasModelPermissionForTenant, HasTenantPermission
+from django_tenants.utils import get_public_schema_name, schema_context
+from django.contrib.auth.models import Group, Permission
 
 from .serializers import (
     PublicTenantBootstrapSerializer,
@@ -31,6 +35,7 @@ from .serializers import (
 )
 from django.db import IntegrityError, transaction
 import time
+import logging
 
 
 class ChapaPaymentInitView(generics.GenericAPIView):
@@ -487,51 +492,75 @@ class ProvisionTenantView(generics.ListCreateAPIView):
             "tenant": TenantSerializer(tenant).data,
         }, status=status.HTTP_201_CREATED)
 
-class userListCreateView(generics.ListCreateAPIView):
-    queryset = UserAccount.objects.order_by('id')
-    serializer_class = userSerializer
-class TenantListCreateView(generics.ListCreateAPIView):
-    queryset = Tenant.objects.order_by('id')
-    serializer_class = TenantSerializer
+# class userListCreateView(generics.ListCreateAPIView):
+#     queryset = UserAccount.objects.order_by('id')
+#     serializer_class = userSerializer
+# class TenantListCreateView(generics.ListCreateAPIView):
+#     queryset = Tenant.objects.order_by('id')
+#     serializer_class = TenantSerializer
 
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        tenant = serializer.save()
-        headers = self.get_success_headers(serializer.data)
-        return Response(
-            {
-                "message": "Tenant created successfully",
-                "tenant": TenantSerializer(tenant).data
-            },
-            status=status.HTTP_201_CREATED,
-            headers=headers
-        )
-
-
-from rest_framework import permissions, serializers
-from django_tenants.utils import get_public_schema_name, schema_context
-from django.contrib.auth.models import Group, Permission
+#     def create(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+#         serializer.is_valid(raise_exception=True)
+#         tenant = serializer.save()
+#         headers = self.get_success_headers(serializer.data)
+#         return Response(
+#             {
+#                 "message": "Tenant created successfully",
+#                 "tenant": TenantSerializer(tenant).data
+#             },
+#             status=status.HTTP_201_CREATED,
+#             headers=headers
+#         )
 
 
-class IsTenantOwnerOrAdmin(permissions.BasePermission):
-    def has_permission(self, request, view):
+
+
+
+class AvailablePermissionsView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsTenantUser]
+
+    def get(self, request):
         tenant = getattr(request, 'tenant', None)
-        if not tenant or not request.user or not request.user.is_authenticated:
-            return False
-        try:
-            return request.user == tenant.owner or getattr(request.user, 'usertenantpermissions', None) and request.user.usertenantpermissions.is_superuser
-        except Exception:
-            return False
-class IsTenantUser(permissions.BasePermission):
-    def has_permission(self, request, view):
+        if not tenant:
+            return Response({'detail': 'No tenant context'}, status=status.HTTP_400_BAD_REQUEST)
+
+        with schema_context(tenant.schema_name):
+            perms = Permission.objects.all().order_by('content_type__app_label', 'codename')
+            data = [f"{p.content_type.app_label}.{p.codename}" for p in perms]
+
+        return Response({'tenant_permissions': data})
+
+class CurrentTenantPermissionsView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsTenantUser]
+
+    def get(self, request):
         tenant = getattr(request, 'tenant', None)
-        if not tenant or not request.user or not request.user.is_authenticated:
-            return False
-        try:
-            return tenant in request.user.tenants.all()
-        except Exception:
-            return False
+        user = getattr(request, 'user', None)
+        if not tenant or not user:
+            return Response({'detail': 'No tenant context or user'}, status=status.HTTP_400_BAD_REQUEST)
+
+        with schema_context(tenant.schema_name):
+            try:
+                tenant_user = UserAccount.objects.get(pk=user.pk)
+                groups = [g.name for g in tenant_user.usertenantpermissions.groups.all()]
+                permissions = sorted(tenant_user.get_all_permissions())
+            except Exception as exc:
+                return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({'tenant_groups': groups, 'tenant_permissions': permissions})
+
+class TenantPermissionProtectedView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasTenantPermission]
+    permission_required = 'inventory.change_category'
+
+    def get(self, request, *args, **kwargs):
+        return Response({
+            'detail': 'You have tenant permission to access this endpoint.',
+            'tenant_groups': [g.name for g in request.user.usertenantpermissions.groups.all()],
+            'tenant_permissions': sorted(request.user.get_all_permissions())
+        })
+
 class TenantGroupCreateView(generics.ListCreateAPIView):
     serializer_class = GroupSerializer
     # permission_classes = [permissions.IsAuthenticated, IsTenantOwnerOrAdmin]
@@ -693,36 +722,7 @@ class UserPermissionsView(generics.GenericAPIView):
             'tenant_groups': groups,
             'tenant_permissions': permissions
         }) 
-    # def get(self, request):
-    #     tenant = getattr(request, 'tenant', None)
-    #     user = request.user
-        
-    #     if not tenant:
-    #         return Response({'detail': 'No tenant context'}, status=400)
-        
-    #     with schema_context(tenant.schema_name):
-    #         try:
-    #             utp = user.usertenantpermissions
-    #             groups = [g.name for g in utp.groups.all()]
-                
-    #             # Debug: get permissions from each group
-    #             group_perms = {}
-    #             for g in utp.groups.all():
-    #                 group_perms[g.name] = [f"{p.content_type.app_label}.{p.codename}" for p in g.permissions.all()]
-                
-    #             all_perms = sorted(user.get_all_permissions())
-                
-    #             return Response({
-    #                 'groups': groups,
-    #                 'group_permissions': group_perms,
-    #                 'all_permissions': all_perms,
-    #                 'has_utp': True
-    #             })
-    #         except Exception as e:
-    #             return Response({
-    #                 'error': str(e),
-    #                 'has_utp': False
-    #             }, status=400)
+    
 
 
 class AvailablePermissionsView(generics.GenericAPIView):
