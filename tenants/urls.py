@@ -6,9 +6,9 @@ from .auth_views import TenantTokenObtainPairView
 
 
 urlpatterns = [
-    path('tenants/', views.TenantUserCreateView.as_view(), name='tenant-list'),
+    path('tenants/', views.TenantListCreateView.as_view(), name='tenant-list'),
     # path('tenants/<int:pk>/', views.TenantDetailView.as_view(), name='tenant-detail'),
-    path('users/', views.TenantUserCreateView.as_view(), name='user-list'),
+    path('users/', views.userListCreateView.as_view(), name='user-list'),
     # bootstrap public tenant
     path('bootstrap-public/', views.PublicTenantBootstrapView.as_view(), name='bootstrap-public'),
     # provision a private tenant
