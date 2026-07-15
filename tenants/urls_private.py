@@ -14,6 +14,7 @@ urlpatterns = [
     path('tenant-users/', views.TenantUserCreateView.as_view(), name='tenant-user-create'),
     path('tenant-users/<int:pk>/', views.TenantUserUpdateView.as_view(), name='tenant-user-update'),
     path('tenant/groups/', views.TenantGroupCreateView.as_view(), name='tenant-group-create'),
+    path('tenant/groups/<int:pk>/', views.TenantGroupDetailView.as_view(), name='tenant-group-detail'),
     path('users/permissions/', views.UserPermissionsView.as_view(), name='user-permissions'),
     # list all available permissions
     path('tenant/permissions/', views.AvailablePermissionsView.as_view(), name='available-permissions'),

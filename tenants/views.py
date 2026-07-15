@@ -563,7 +563,7 @@ class TenantPermissionProtectedView(APIView):
 
 class TenantGroupCreateView(generics.ListCreateAPIView):
     serializer_class = GroupSerializer
-    # permission_classes = [permissions.IsAuthenticated, IsTenantOwnerOrAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsTenantOwnerOrAdmin]
 
     # to get group name and permissions list from request data, create group and assign permissions within tenant schema context
     def get_queryset(self):
@@ -601,10 +601,38 @@ class TenantGroupCreateView(generics.ListCreateAPIView):
         status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         return Response(GroupSerializer(group).data, status=status_code)
 
+class TenantGroupDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = GroupSerializer  
+    permission_classes = [permissions.IsAuthenticated, IsTenantOwnerOrAdmin]  
+    # authentication_classes = [JWTAuthentication, SessionAuthentication]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    def get_object(self):
+        tenant = getattr(self.request, 'tenant', None)
+        group_id = self.kwargs.get('pk')
+        if not tenant:
+            raise Http404
+        with schema_context(tenant.schema_name):
+            group = Group.objects.filter(pk=group_id).first()
+            if not group:
+                raise Http404
+            return group
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        return Response({
+            "message": "Group updated successfully",
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)   
+
 class TenantUserCreateView(generics.ListCreateAPIView):
     serializer_class = TenantUserCreateSerializer
     queryset = UserAccount.objects.order_by('id')
-    # permission_classes = [permissions.IsAuthenticated, IsTenantOwnerOrAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsTenantOwnerOrAdmin]
     def get_queryset(self):
         tenant = getattr(self.request, 'tenant', None)
         return UserAccount.objects.filter(tenants=tenant)
@@ -651,7 +679,7 @@ class TenantUserCreateView(generics.ListCreateAPIView):
 
 class TenantUserUpdateView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = TenantUserUpdateSerializer
-    # permission_classes = [permissions.IsAuthenticated, IsTenantOwnerOrAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsTenantOwnerOrAdmin]
 
     # lookup by public user id or pk; ensure the user belongs to this tenant
     def get_object(self):
@@ -709,6 +737,9 @@ class UserPermissionsView(generics.GenericAPIView):
     def get(self, request):
         tenant = getattr(request, 'tenant', None)
         user = request.user
+        if not user or not user.is_authenticated:
+            return Response({'detail': 'User not authenticated'}, status=401)
+        tenant_user = UserAccount.objects.get(pk=user.pk)
         
         if not tenant:
             return Response({'detail': 'No tenant context'}, status=400)
@@ -716,7 +747,7 @@ class UserPermissionsView(generics.GenericAPIView):
         from django_tenants.utils import schema_context
         with schema_context(tenant.schema_name):
             permissions = sorted(user.get_all_permissions())
-            groups = [g.name for g in user.usertenantpermissions.groups.all()]
+            groups = [g.name for g in tenant_user.usertenantpermissions.groups.all()]
         
         return Response({
             'tenant_groups': groups,

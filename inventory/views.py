@@ -334,6 +334,7 @@ class CustomerListCreateAPIView(APIView):
         
 class CustomerRetrieveUpdateDeleteAPIView(APIView):
     # permission_classes = (permissions.AllowAny,)
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request, pk):
         try:
@@ -420,6 +421,7 @@ class CustomerRetrieveUpdateDeleteAPIView(APIView):
 
 class CompanyListCreateAPIView(APIView):
     # permission_classes = (permissions.AllowAny,)
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request, format=None):
         try:
@@ -456,7 +458,9 @@ class CompanyListCreateAPIView(APIView):
 
 class CompanyRetrieveUpdateDeleteAPIView(APIView):
     # permission_classes = (permissions.AllowAny,)
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+
     def get(self, request, pk):
         try:
                          
@@ -541,6 +545,7 @@ class CompanyRetrieveUpdateDeleteAPIView(APIView):
 
 class OrderListCreatView(generics.ListCreateAPIView):
     queryset = Order.objects.filter(credit=False).order_by('-id')
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     serializer_class = OrderSerializer
     pagination_class = Pagination
@@ -596,6 +601,7 @@ class OrderListCreatView(generics.ListCreateAPIView):
 class OrderDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Order.objects.all()
     serializer_class = OrderSerializer
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
 
     def get(self, request, *args, **kwargs):
@@ -621,6 +627,7 @@ class OrderDetailView(generics.RetrieveUpdateDestroyAPIView):
 class OrderItemListCreateView(generics.ListCreateAPIView):
     queryset = OrderItem.objects.filter(order__credit=False).order_by('id')
     serializer_class = OrderItemSerializer
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def create(self, request, *args, **kwargs):
         response = super().create(request, *args, **kwargs)
@@ -632,6 +639,7 @@ class OrderItemListCreateView(generics.ListCreateAPIView):
 class OrderItemDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = OrderItem.objects.all()
     serializer_class = OrderItemSerializer
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
 
     def update(self, request, *args, **kwargs):
@@ -666,6 +674,7 @@ class OrderItemDetailView(generics.RetrieveUpdateDestroyAPIView):
 class OrderCreditListAPIView(generics.ListAPIView):
     queryset = Order.objects.filter(credit=True).order_by('-id')
     # permission_classes = [OrderPermission]
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     serializer_class = OrderLightSerializer
     pagination_class = Pagination
@@ -681,13 +690,15 @@ class OrderCreditListAPIView(generics.ListAPIView):
 class OrderItemCreditListView(generics.ListAPIView):
     queryset = OrderItem.objects.filter(order__credit=True).order_by('id')
     serializer_class = OrderItemSerializer
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     # def get_queryset(self):
     #     # only fetch id, name, email from the DB
     #     return OrderItem.objects.only('id', 'order', 'product', 'product_price', 'product__name', 'item_receipt', 'package', 'unit', 'quantity', 'unit_price', 'price', 'status').select_related('order', 'product').filter(order__credit=True).order_by('id')
 
 class RetriveRevenueAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    # authentication_classes = [JWTAuthentication, SessionAuthentication]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request): 
         try:
            
@@ -701,7 +712,8 @@ class RetriveRevenueAPIView(APIView):
             )
 
 class RetriveSalesPersonRevenueAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    # authentication_classes = [JWTAuthentication, SessionAuthentication]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request): 
         try:
             user = request.user
@@ -717,7 +729,8 @@ class RetriveSalesPersonRevenueAPIView(APIView):
             )
 
 class RetriveTotalOrdersAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    # authentication_classes = [JWTAuthentication, SessionAuthentication]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request): 
         try:
             user = request.user
@@ -732,7 +745,8 @@ class RetriveTotalOrdersAPIView(APIView):
             )
 
 class RetriveProfitAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    # authentication_classes = [JWTAuthentication, SessionAuthentication]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request): 
         try:
             
@@ -772,6 +786,7 @@ class RetriveProfitAPIView(APIView):
 
 
 class OrderReceiptAPIView(APIView):
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request, pk):
         try:
@@ -846,6 +861,7 @@ class OrderReceiptAPIView(APIView):
             )
 
 class OrderLogAPIView(APIView):
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request):
         try:
@@ -894,6 +910,7 @@ class OrderLogAPIView(APIView):
 
 
 class ExcelReportAPIView(APIView):
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request):
         try:
@@ -930,7 +947,8 @@ class ExcelReportAPIView(APIView):
 
 
 class ListOutOFStockProductAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    # authentication_classes = [JWTAuthentication, SessionAuthentication]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request):
         try:
             
@@ -945,7 +963,8 @@ class ListOutOFStockProductAPIView(APIView):
             )
 
 class CountNearExpirationDateProductAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    # authentication_classes = [JWTAuthentication, SessionAuthentication]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request):
         try:
             
@@ -959,6 +978,7 @@ class CountNearExpirationDateProductAPIView(APIView):
             )
 
 class ExpenseTypesListCreateAPIView(APIView):
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
 
     # permission_classes = (permissions.AllowAny,)
@@ -995,6 +1015,7 @@ class ExpenseTypesListCreateAPIView(APIView):
             )
 
 class ExpenseTypesRetrieveUpdateDeleteAPIView(APIView):
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     # permission_classes = (permissions.AllowAny,)
     def get(self, request, pk):
@@ -1081,6 +1102,7 @@ class ExpenseTypesRetrieveUpdateDeleteAPIView(APIView):
 
 
 class OtherExpensesListCreateAPIView(APIView):
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     # permission_classes = (permissions.AllowAny,)
     def get(self, request, format=None):
@@ -1117,6 +1139,7 @@ class OtherExpensesListCreateAPIView(APIView):
             )
 
 class OtherExpensesRetrieveUpdateDeleteAPIView(APIView):
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     # permission_classes = (permissions.AllowAny,)
     def get(self, request, pk):
@@ -1203,7 +1226,8 @@ class OtherExpensesRetrieveUpdateDeleteAPIView(APIView):
 
 
 class RetriveTotalProductCostAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    # authentication_classes = [JWTAuthentication, SessionAuthentication]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request): 
         try:
            
@@ -1217,7 +1241,8 @@ class RetriveTotalProductCostAPIView(APIView):
             )
 
 class ProductExcelReportAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    # authentication_classes = [JWTAuthentication, SessionAuthentication]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request):
         try:
            
@@ -1232,7 +1257,8 @@ class ProductExcelReportAPIView(APIView):
             )
 
 class ProductsPerSupplierAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    # authentication_classes = [JWTAuthentication, SessionAuthentication]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request, pk):
         try:
           
@@ -1253,7 +1279,8 @@ class ProductsPerSupplierAPIView(APIView):
 
 
 class SalesPersonDashboardAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    # authentication_classes = [JWTAuthentication, SessionAuthentication]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request):
         try:
             
@@ -1274,7 +1301,8 @@ class SalesPersonDashboardAPIView(APIView):
             )
 
 class RecentOrderLimitedAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    # authentication_classes = [JWTAuthentication, SessionAuthentication]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request):
         try:
            
@@ -1290,7 +1318,8 @@ class RecentOrderLimitedAPIView(APIView):
 # ------------------------------------- Total Sales relative to Time --------------------------------------------------
 
 class DailySalesAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    # authentication_classes = [JWTAuthentication, SessionAuthentication]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request):
         try:
             
@@ -1310,7 +1339,8 @@ class DailySalesAPIView(APIView):
             )
        
 class WeeklySalesAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    # authentication_classes = [JWTAuthentication, SessionAuthentication]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request):
         try:
             
@@ -1338,7 +1368,8 @@ class WeeklySalesAPIView(APIView):
             )
         
 class MonthlySalesAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    # authentication_classes = [JWTAuthentication, SessionAuthentication]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request):
         try:
            
@@ -1367,7 +1398,8 @@ class MonthlySalesAPIView(APIView):
             )
         
 class YearlySalesAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    # authentication_classes = [JWTAuthentication, SessionAuthentication]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request):
         try:
            
@@ -1396,7 +1428,8 @@ class YearlySalesAPIView(APIView):
 # ------------------------------------- Total Sales relative to Time for Each User --------------------------------------------------
 
 class DailySalesEachUserAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    # authentication_classes = [JWTAuthentication, SessionAuthentication]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request):
         try:
             user = request.user
@@ -1416,7 +1449,8 @@ class DailySalesEachUserAPIView(APIView):
             )
        
 class WeeklySalesEachUserAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    # authentication_classes = [JWTAuthentication, SessionAuthentication]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request):
         try:
             user = request.user
@@ -1445,7 +1479,8 @@ class WeeklySalesEachUserAPIView(APIView):
             )
         
 class MonthlySalesEachUserAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    # authentication_classes = [JWTAuthentication, SessionAuthentication]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request):
         try:
             user = request.user
@@ -1475,7 +1510,8 @@ class MonthlySalesEachUserAPIView(APIView):
             )
         
 class YearlySalesEachUserAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    # authentication_classes = [JWTAuthentication, SessionAuthentication]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request):
         try:
             user = request.user
@@ -1504,7 +1540,8 @@ class YearlySalesEachUserAPIView(APIView):
 
 
 class ExportProductExcelAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    # authentication_classes = [JWTAuthentication, SessionAuthentication]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request, *args, **kwargs):
         # Create workbook and sheet
         wb = openpyxl.Workbook()
@@ -1536,7 +1573,8 @@ class ExportProductExcelAPIView(APIView):
         return response
 
 class ImportProductExcelAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    # authentication_classes = [JWTAuthentication, SessionAuthentication]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     parser_classes = [MultiPartParser]
 
     def post(self, request, *args, **kwargs):
@@ -1573,6 +1611,8 @@ class ImportProductExcelAPIView(APIView):
 
 
 class OrderLogListView(generics.ListAPIView):
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
+    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     serializer_class = OrderPaymentLogSerializer
 
     def get_queryset(self):
@@ -1581,6 +1621,7 @@ class OrderLogListView(generics.ListAPIView):
 
 
 class ProductLogAPIView(APIView):
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
 
     def get(self, request):
@@ -1630,7 +1671,7 @@ class ProductLogAPIView(APIView):
 
 class TotalOrderAPIView(APIView):
     # permission_classes = [AllowAny]
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     def get(self, request): 
         try:
            
@@ -1644,7 +1685,7 @@ class TotalOrderAPIView(APIView):
             )
 
 class TotalProductAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
     # permission_classes = [AllowAny]
     def get(self, request): 
         try:     

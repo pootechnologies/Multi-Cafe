@@ -17,6 +17,7 @@ urlpatterns = [
     # path('tenant-users/', views.TenantUserCreateView.as_view(), name='tenant-user-create'),
     # create tenant-scoped groups
     path('tenant/groups/', views.TenantGroupCreateView.as_view(), name='tenant-group-create'),
+    path('tenant/groups/<int:pk>/', views.TenantGroupDetailView.as_view(), name='tenant-group-detail'),
     # # list all available permissions
     path('tenant/permissions/', views.AvailablePermissionsView.as_view(), name='available-permissions'),
     path('tenant/permissions/current/', views.CurrentTenantPermissionsView.as_view(), name='current-tenant-permissions'),
