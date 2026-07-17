@@ -27,7 +27,10 @@ class ChapaInitSerializer(serializers.Serializer):
     provider = serializers.CharField(
         read_only=True)
 class ChapaVerifySerializer(serializers.Serializer):
-    reference = serializers.CharField(required=True)    
+    # reference = serializers.CharField(required=True)
+    class Meta:
+        model = TenantPayment
+        fields = ['id','plan']    
 class PaymentInitSerializer(serializers.Serializer):
     plan = serializers.PrimaryKeyRelatedField(
         queryset=SubscriptionPlan.objects.all(),

@@ -37,7 +37,6 @@ from django.db import IntegrityError, transaction
 import time
 import logging
 
-
 class ChapaPaymentInitView(generics.GenericAPIView):
     serializer_class = ChapaInitSerializer
 
@@ -52,20 +51,11 @@ class ChapaPaymentInitView(generics.GenericAPIView):
             plan = serializer.validated_data.get("plan", None)
         except SubscriptionPlan.DoesNotExist:
             return Response({"detail": "Invalid plan ID"}, status=status.HTTP_400_BAD_REQUEST)
-
+       
         tenant = request.tenant
+        print(f"Tenant: {tenant}")
         if not tenant:
             return Response({"detail": "No tenant context"}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Create a payment record
-        # payment = TenantPayment.objects.create(
-        #     tenant=tenant,
-        #     amount=plan.price,
-        #     plan=plan,
-        #     status="pending",
-        #     reference=str(uuid.uuid4()),  # Unique reference
-        # )
-        reference = str(uuid.uuid4())
        
         # Prepare data for Chapa payment initiation
         # ensure we have a valid email to send to Chapa (Chapa validates format)
@@ -78,29 +68,20 @@ class ChapaPaymentInitView(generics.GenericAPIView):
             return Response({"detail": "Tenant owner email is invalid."}, status=status.HTTP_400_BAD_REQUEST)
 
         # Truncate customization title to 16 chars per Chapa validation
-        customization_title = (plan.name or "Subscription")[:16]
+        customization_title = (plan.name or "Subscription")[:16]       
 
-        # Build callback URL: prefer explicit CHAPA_WEBHOOK_URL in settings,
-        # otherwise build absolute URL for the `chapa-webhook` route.
-        webhook_setting = getattr(settings, 'CHAPA_WEBHOOK_URL', None)
-        if webhook_setting:
-            if '<tx_ref>' in webhook_setting:
-                callback_url = webhook_setting.replace('<tx_ref>', reference)
-            else:
-                callback_url = webhook_setting.rstrip('/') + f"?tx_ref={reference}"
-        else:
-            webhook_path = reverse('chapa-webhook')
-            callback_url = request.build_absolute_uri(webhook_path) + f"?tx_ref={reference}"
-
+        reference = str(uuid.uuid4())
+        callback_url = f"http://{tenant if tenant else 'default'}.localhost:8000/api/chapa-verify/{reference}/"  # Adjust as needed for your domain and route
+        return_url = f"http://{tenant if tenant else 'default'}.localhost:8000/api/chapa-verify/{reference}/"  # Adjust as needed for your domain and route
         chapa_data = {
             "amount": str(plan.price),
             "currency": "ETB",
             "email": owner_email,
-            # "first_name": tenant.owner.username,
+            
             "tx_ref": reference,
             # callback_url should point to your webhook that accepts Chapa POSTs
             "callback_url": callback_url,
-            # "return_url": "https://your-return-url.com/payment/return/",
+            "return_url": return_url,
             # "return_url": settings.FRONTEND_PAYMENT_REDIRECT,
             "customization": {
                 "title": customization_title,
@@ -138,6 +119,9 @@ class ChapaPaymentInitView(generics.GenericAPIView):
             reference=reference,  # Unique reference 
             provider="chapa"
         )
+        tenant = payment.tenant
+        tenant.paid_until = timezone.now().date() + timedelta(days=3)  # 3 days grace period
+        tenant.save()
 
         payment_url = chapa_response.get("data", {}).get("checkout_url")
 
@@ -149,6 +133,156 @@ class ChapaPaymentInitView(generics.GenericAPIView):
 class ChapaPaymentVerifyView(generics.GenericAPIView):
         
     serializer_class = PaymentVerifySerializer
+    def get(self, request, reference):
+        # chapa payment verification
+
+
+        try:
+            payment = TenantPayment.objects.get(reference=reference)
+            if not payment:
+                return Response({"detail": "Invalid reference"}, status=status.HTTP_404_NOT_FOUND)
+        except TenantPayment.DoesNotExist:
+            return Response({"detail": "Payment not found"}, status=status.HTTP_404_NOT_FOUND)  
+
+
+
+        headers = {"Authorization": f"Bearer {CHAPA_SECRET_KEY}"}
+        try:
+            response = requests.get(f"{CHAPA_BASE_URL}/transaction/verify/{reference}", headers=headers)
+        except requests.RequestException as exc:
+            return Response({"detail": "Failed to verify payment with Chapa", "error": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        if not response.ok:
+            try:
+                body = response.json()
+            except Exception:
+                body = response.text
+            return Response({"detail": "Failed to verify payment with Chapa", "chapa_response": body, "status_code": response.status_code}, status=status.HTTP_502_BAD_GATEWAY)
+
+        chapa_response = response.json()
+        if chapa_response.get("status") != "success":
+            # or chapa_response["data"]["status"] != "successful":
+            return Response({"detail": "Payment verification failed"}, status=status.HTTP_400_BAD_REQUEST)
+        
+
+        data = chapa_response.get("data",{})
+        if data.get("status") == "success" and float(data.get("amount", 0)) == float(payment.amount):            
+            if payment.status != "paid_verified":
+                payment.status = "paid_verified"
+                payment.paid_at = timezone.now()
+                # Safely compute expiry days
+                days = payment.plan.duration_days if (payment.plan and getattr(payment.plan, 'duration_days', None) is not None) else 0
+                payment.expires_at = timezone.now().date() + timedelta(days=days)
+                payment.save()
+
+                # Update tenant's paid_until date
+                tenant = payment.tenant
+                tenant.paid_until = payment.expires_at
+                tenant.grace_until = tenant.paid_until + timedelta(days=1)  # 1 day grace period
+                tenant.on_trial = False
+                tenant.save()
+
+    
+            return Response({"detail": "Payment verified successfully", "chapa_response": chapa_response}, status=status.HTTP_200_OK)
+        else:
+            return Response({"detail": "Payment verification failed", "chapa_response": chapa_response}, status=status.HTTP_400_BAD_REQUEST)    
+
+
+# class ChapaPaymentInitView(generics.GenericAPIView):
+#     serializer_class = ChapaInitSerializer
+#     def post(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+#         serializer.is_valid(raise_exception=True)      
+#         try:            
+#             plan = serializer.validated_data.get("plan", None)
+#         except SubscriptionPlan.DoesNotExist:
+#             return Response({"detail": "Invalid plan ID"}, status=status.HTTP_400_BAD_REQUEST)
+
+#         tenant = request.tenant
+#         if not tenant:
+#             return Response({"detail": "No tenant context"}, status=status.HTTP_400_BAD_REQUEST)
+
+#         # Prepare data for Chapa payment initiation
+#         # ensure we have a valid email to send to Chapa (Chapa validates format)
+#         owner_email = getattr(getattr(tenant, 'owner', None), 'email', None) or (getattr(request, 'user', None) and getattr(request.user, 'email', None))
+#         if not owner_email:
+#             return Response({"detail": "Tenant owner email not set; cannot initiate payment."}, status=status.HTTP_400_BAD_REQUEST)
+#         try:
+#             validate_email(owner_email)
+#         except DjangoValidationError:
+#             return Response({"detail": "Tenant owner email is invalid."}, status=status.HTTP_400_BAD_REQUEST)
+
+#         # Truncate customization title to 16 chars per Chapa validation
+#         customization_title = (plan.name or "Subscription")[:16]
+#         reference = str(uuid.uuid4())
+#         # Build callback URL: prefer explicit CHAPA_WEBHOOK_URL in settings,
+#         # otherwise build absolute URL for the `chapa-webhook` route.
+#         webhook_setting = getattr(settings, 'CHAPA_WEBHOOK_URL', None)
+#         if webhook_setting:
+#             if '<tx_ref>' in webhook_setting:
+#                 callback_url = webhook_setting.replace('<tx_ref>', reference)
+#             else:
+#                 callback_url = webhook_setting.rstrip('/') + f"?tx_ref={reference}"
+#         else:
+#             webhook_path = reverse('chapa-webhook')
+#             callback_url = request.build_absolute_uri(webhook_path) + f"?tx_ref={reference}"
+
+#         chapa_data = {
+#             "amount": str(plan.price),
+#             "currency": "ETB",
+#             "email": owner_email,
+#             # "first_name": tenant.owner.username,
+#             "tx_ref": reference,
+#             # callback_url should point to your webhook that accepts Chapa POSTs
+#             "callback_url": callback_url,
+#             "return_url": callback_url,
+#             # "return_url": settings.FRONTEND_PAYMENT_REDIRECT,
+#             "customization": {
+#                 "title": customization_title,
+#                 "description": plan.name
+#             }
+#         }
+
+#         headers = {
+#             "Authorization": f"Bearer {CHAPA_SECRET_KEY}",
+#             "Content-Type": "application/json",
+#         }
+
+#         # Initiate payment with Chapa
+#         try:
+#             response = requests.post(f"{CHAPA_BASE_URL}/transaction/initialize", json=chapa_data, headers=headers, timeout=10)
+#         except requests.RequestException as exc:
+#             return Response({"detail": "Failed to initiate payment with Chapa", "error": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
+#         if not response.ok:
+#             try:
+#                 body = response.json()
+#             except Exception:
+#                 body = response.text
+#             return Response({"detail": "Failed to initiate payment with Chapa", "chapa_response": body, "status_code": response.status_code}, status=status.HTTP_502_BAD_GATEWAY)
+
+#         chapa_response = response.json()
+#         if chapa_response.get("status") != "success":
+#             return Response({"detail": "Chapa payment initiation failed", "chapa_response": chapa_response}, status=status.HTTP_400_BAD_REQUEST)
+
+#         payment = TenantPayment.objects.create(
+#             tenant=tenant,
+#             amount=plan.price,
+#             plan=plan,
+#             status="pending",
+#             reference=reference,  # Unique reference 
+#             provider="chapa"
+#         )
+
+#         payment_url = chapa_response.get("data", {}).get("checkout_url")
+
+#         return Response({
+#             "reference": payment.reference,
+#             "payment_url": payment_url
+#         }, status=status.HTTP_201_CREATED)
+    
+# class ChapaPaymentVerifyView(generics.GenericAPIView):        
+#     serializer_class = PaymentVerifySerializer
     # def get(self, request, reference):
     #     # chapa payment verification
     #     headers = {"Authorization": f"Bearer {CHAPA_PUBLIC_KEY}"}
@@ -168,142 +302,142 @@ class ChapaPaymentVerifyView(generics.GenericAPIView):
     #     if chapa_response.get("status") != "success" or chapa_response["data"]["status"] != "successful":
     #         return Response({"detail": "Payment verification failed"}, status=status.HTTP_400_BAD_REQUEST)
 
-    def post(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        reference = serializer.validated_data["reference"]
+    # def post(self, request, *args, **kwargs):
+    #     serializer = self.get_serializer(data=request.data)
+    #     serializer.is_valid(raise_exception=True)
+    #     reference = serializer.validated_data["reference"]
 
-        try:
-            payment = TenantPayment.objects.get(reference=reference)
-            if not payment:
-                return Response({"detail": "Invalid reference"}, status=status.HTTP_404_NOT_FOUND)
-            if payment.tenant != request.tenant:
-                return Response({"detail": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
-        except TenantPayment.DoesNotExist:
-            return Response({"detail": "Payment not found"}, status=status.HTTP_404_NOT_FOUND)
+    #     try:
+    #         payment = TenantPayment.objects.get(reference=reference)
+    #         if not payment:
+    #             return Response({"detail": "Invalid reference"}, status=status.HTTP_404_NOT_FOUND)
+    #         if payment.tenant != request.tenant:
+    #             return Response({"detail": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
+    #     except TenantPayment.DoesNotExist:
+    #         return Response({"detail": "Payment not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        headers = {
-            # Use secret key for server-to-server verification
-            "Authorization": f"Bearer {CHAPA_SECRET_KEY}",
-            "Content-Type": "application/json",
-        }
+    #     headers = {
+    #         # Use secret key for server-to-server verification
+    #         "Authorization": f"Bearer {CHAPA_SECRET_KEY}",
+    #         "Content-Type": "application/json",
+    #     }
 
-        # Verify payment with Chapa (robust error handling and debug info)
-        try:
-            response = requests.get(f"{CHAPA_BASE_URL}/transaction/verify/{reference}", headers=headers, timeout=10)
-        except requests.RequestException as exc:
-            return Response({"detail": "Failed to verify payment with Chapa", "error": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+    #     # Verify payment with Chapa (robust error handling and debug info)
+    #     try:
+    #         response = requests.get(f"{CHAPA_BASE_URL}/transaction/verify/{reference}", headers=headers, timeout=10)
+    #     except requests.RequestException as exc:
+    #         return Response({"detail": "Failed to verify payment with Chapa", "error": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
 
-        if not response.ok:
-            try:
-                body = response.json()
-            except Exception:
-                body = response.text
-            return Response({"detail": "Failed to verify payment with Chapa", "chapa_response": body, "status_code": response.status_code}, status=status.HTTP_502_BAD_GATEWAY)
+    #     if not response.ok:
+    #         try:
+    #             body = response.json()
+    #         except Exception:
+    #             body = response.text
+    #         return Response({"detail": "Failed to verify payment with Chapa", "chapa_response": body, "status_code": response.status_code}, status=status.HTTP_502_BAD_GATEWAY)
 
-        chapa_response = response.json()
-        # Chapa may return data.status as 'success' (test) or 'successful' (live); accept both
-        chapa_data_status = chapa_response.get("data", {}).get("status")
-        if chapa_response.get("status") != "success" or chapa_data_status not in ("successful", "success"):
-            return Response({"detail": "Payment verification failed", "chapa_response": chapa_response}, status=status.HTTP_400_BAD_REQUEST)
+    #     chapa_response = response.json()
+    #     # Chapa may return data.status as 'success' (test) or 'successful' (live); accept both
+    #     chapa_data_status = chapa_response.get("data", {}).get("status")
+    #     if chapa_response.get("status") != "success" or chapa_data_status not in ("successful", "success"):
+    #         return Response({"detail": "Payment verification failed", "chapa_response": chapa_response}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Update payment record
-        if chapa_response.get("status") == "success" and chapa_data_status in ("successful", "success"):
-            if payment.status != "paid_verified":
-                payment.status = "paid_verified"
-                payment.paid_at = timezone.now()
-                # Safely compute expiry days
-                days = payment.plan.duration_days if (payment.plan and getattr(payment.plan, 'duration_days', None) is not None) else 0
-                payment.expires_at = timezone.now().date() + timedelta(days=days)
-                payment.save()
+    #     # Update payment record
+    #     if chapa_response.get("status") == "success" and chapa_data_status in ("successful", "success"):
+    #         if payment.status != "paid_verified":
+    #             payment.status = "paid_verified"
+    #             payment.paid_at = timezone.now()
+    #             # Safely compute expiry days
+    #             days = payment.plan.duration_days if (payment.plan and getattr(payment.plan, 'duration_days', None) is not None) else 0
+    #             payment.expires_at = timezone.now().date() + timedelta(days=days)
+    #             payment.save()
 
-                # Update tenant's paid_until date
-                tenant = payment.tenant
-                tenant.paid_until = payment.expires_at
-                tenant.grace_until = tenant.paid_until + timedelta(days=3)  # 3 days grace period
-                tenant.on_trial = False
-                tenant.save()
+    #             # Update tenant's paid_until date
+    #             tenant = payment.tenant
+    #             tenant.paid_until = payment.expires_at
+    #             tenant.grace_until = tenant.paid_until + timedelta(days=3)  # 3 days grace period
+    #             tenant.on_trial = False
+    #             tenant.save()
 
-        return Response({"detail": "Payment verified successfully"}, status=status.HTTP_200_OK)    
+    #     return Response({"detail": "Payment verified successfully"}, status=status.HTTP_200_OK)    
 
 
-@csrf_exempt
-def chapa_webhook(request):
-    """Handle Chapa webhook callbacks.
+# @csrf_exempt
+# def chapa_webhook(request):
+#     """Handle Chapa webhook callbacks.
 
-    Expects JSON payload from Chapa. Will verify signature if
-    `CHAPA_WEBHOOK_SECRET` is set in settings. It will then perform
-    a server-to-server verify and update the `TenantPayment` record
-    idempotently.
-    """
-    if request.method != 'POST':
-        return JsonResponse({'detail': 'Method not allowed'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+#     Expects JSON payload from Chapa. Will verify signature if
+#     `CHAPA_WEBHOOK_SECRET` is set in settings. It will then perform
+#     a server-to-server verify and update the `TenantPayment` record
+#     idempotently.
+#     """
+#     # if request.method != 'POST':
+#         # return JsonResponse({'detail': 'Method not allowed'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
-    try:
-        payload = request.body or b'{}'
-        data = json.loads(payload.decode('utf-8'))
-    except Exception:
-        return JsonResponse({'detail': 'Invalid JSON payload'}, status=status.HTTP_400_BAD_REQUEST)
+#     try:
+#         payload = request.body or b'{}'
+#         data = json.loads(payload.decode('utf-8'))
+#     except Exception:
+#         return JsonResponse({'detail': 'Invalid JSON payload'}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Optional signature verification
-    webhook_secret = getattr(settings, 'CHAPA_WEBHOOK_SECRET', None)
-    sig_header = request.META.get('HTTP_X_CHAPA_SIGNATURE') or request.META.get('HTTP_X_SIGNATURE')
-    if webhook_secret and sig_header:
-        expected = hmac.new(webhook_secret.encode(), payload, hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(expected, sig_header):
-            return JsonResponse({'detail': 'Invalid webhook signature'}, status=status.HTTP_400_BAD_REQUEST)
+#     # Optional signature verification
+#     webhook_secret = getattr(settings, 'CHAPA_WEBHOOK_SECRET', None)
+#     sig_header = request.META.get('HTTP_X_CHAPA_SIGNATURE') or request.META.get('HTTP_X_SIGNATURE')
+#     if webhook_secret and sig_header:
+#         expected = hmac.new(webhook_secret.encode(), payload, hashlib.sha256).hexdigest()
+#         if not hmac.compare_digest(expected, sig_header):
+#             return JsonResponse({'detail': 'Invalid webhook signature'}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Extract tx_ref (our reference) or chapa reference
-    tx_ref = data.get('tx_ref') or data.get('data', {}).get('tx_ref')
-    chapa_reference = data.get('reference') or data.get('data', {}).get('reference')
+#     # Extract tx_ref (our reference) or chapa reference
+#     tx_ref = data.get('tx_ref') or data.get('data', {}).get('tx_ref')
+#     chapa_reference = data.get('reference') or data.get('data', {}).get('reference')
 
-    ref = tx_ref or chapa_reference
-    if not ref:
-        return JsonResponse({'detail': 'Missing reference in webhook payload'}, status=status.HTTP_400_BAD_REQUEST)
+#     ref = tx_ref or chapa_reference
+#     if not ref:
+#         return JsonResponse({'detail': 'Missing reference in webhook payload'}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Try to find TenantPayment by our tx_ref first, then by chapa reference
-    payment = None
-    if tx_ref:
-        payment = TenantPayment.objects.filter(reference=tx_ref).first()
-    if not payment and chapa_reference:
-        payment = TenantPayment.objects.filter(reference=chapa_reference).first()
+#     # Try to find TenantPayment by our tx_ref first, then by chapa reference
+#     payment = None
+#     if tx_ref:
+#         payment = TenantPayment.objects.filter(reference=tx_ref).first()
+#     if not payment and chapa_reference:
+#         payment = TenantPayment.objects.filter(reference=chapa_reference).first()
 
-    if not payment:
-        # Nothing to update; return 200 so provider doesn't keep retrying
-        return JsonResponse({'detail': 'Payment not found'}, status=status.HTTP_200_OK)
+#     if not payment:
+#         # Nothing to update; return 200 so provider doesn't keep retrying
+#         return JsonResponse({'detail': 'Payment not found'}, status=status.HTTP_200_OK)
 
-    # If already verified, respond 200
-    if payment.status == 'paid_verified':
-        return JsonResponse({'detail': 'Already verified'}, status=status.HTTP_200_OK)
+#     # If already verified, respond 200
+#     if payment.status == 'paid_verified':
+#         return JsonResponse({'detail': 'Already verified'}, status=status.HTTP_200_OK)
 
-    # Do server-to-server verify for extra safety
-    headers = {
-        'Authorization': f"Bearer {getattr(settings, 'CHAPA_SECRET_KEY', '')}",
-    }
-    try:
-        resp = requests.get(f"{getattr(settings, 'CHAPA_BASE_URL', '')}/transaction/verify/{ref}", headers=headers, timeout=10)
-        if not resp.ok:
-            return JsonResponse({'detail': 'Chapa verify failed', 'status_code': resp.status_code}, status=status.HTTP_200_OK)
-        chapa_resp = resp.json()
-    except Exception:
-        return JsonResponse({'detail': 'Chapa verification error'}, status=status.HTTP_200_OK)
+#     # Do server-to-server verify for extra safety
+#     headers = {
+#         'Authorization': f"Bearer {getattr(settings, 'CHAPA_SECRET_KEY', '')}",
+#     }
+#     try:
+#         resp = requests.get(f"{getattr(settings, 'CHAPA_BASE_URL', '')}/transaction/verify/{ref}", headers=headers, timeout=10)
+#         if not resp.ok:
+#             return JsonResponse({'detail': 'Chapa verify failed', 'status_code': resp.status_code}, status=status.HTTP_200_OK)
+#         chapa_resp = resp.json()
+#     except Exception:
+#         return JsonResponse({'detail': 'Chapa verification error'}, status=status.HTTP_200_OK)
 
-    chapa_data_status = chapa_resp.get('data', {}).get('status')
-    if chapa_resp.get('status') == 'success' and chapa_data_status in ('successful', 'success'):
-        # mark payment
-        payment.status = 'paid_verified'
-        payment.paid_at = timezone.now()
-        days = payment.plan.duration_days if (payment.plan and getattr(payment.plan, 'duration_days', None) is not None) else 0
-        payment.expires_at = timezone.now().date() + timedelta(days=days)
-        payment.save()
+#     chapa_data_status = chapa_resp.get('data', {}).get('status')
+#     if chapa_resp.get('status') == 'success' and chapa_data_status in ('successful', 'success'):
+#         # mark payment
+#         payment.status = 'paid_verified'
+#         payment.paid_at = timezone.now()
+#         days = payment.plan.duration_days if (payment.plan and getattr(payment.plan, 'duration_days', None) is not None) else 0
+#         payment.expires_at = timezone.now().date() + timedelta(days=days)
+#         payment.save()
 
-        tenant = payment.tenant
-        tenant.paid_until = payment.expires_at
-        tenant.grace_until = tenant.paid_until + timedelta(days=3)
-        tenant.on_trial = False
-        tenant.save()
+#         tenant = payment.tenant
+#         tenant.paid_until = payment.expires_at
+#         tenant.grace_until = tenant.paid_until + timedelta(days=3)
+#         tenant.on_trial = False
+#         tenant.save()
 
-    return JsonResponse({'detail': 'webhook processed'}, status=status.HTTP_200_OK)
+#     return JsonResponse({'detail': 'webhook processed'}, status=status.HTTP_200_OK)
     
 
 
