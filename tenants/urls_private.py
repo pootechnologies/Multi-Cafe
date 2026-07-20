@@ -29,7 +29,7 @@ urlpatterns += [
     path('payments-verify/', views.PaymentVerifyView.as_view(), name='tenant-payment-list'),
     # chapa payment paths
     path('chapa-initiate/', views.ChapaPaymentInitView.as_view(), name='chapa-initiate-payment'),
-    path('chapa-verify/', views.ChapaPaymentVerifyView.as_view(), name='chapa-verify-payment'),
+    path('chapa-verify/<str:reference>/', views.ChapaPaymentVerifyView.as_view(), name='chapa-verify-payment'),
     # notification path
     # path('notifications/', views.NotificationListView.as_view(), name='notification-list'),
 ]

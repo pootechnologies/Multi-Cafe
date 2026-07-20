@@ -588,7 +588,8 @@ class PublicTenantBootstrapView(generics.ListCreateAPIView):
 
         return Response({
             "message": "Public tenant created successfully",
-            "tenant": TenantSerializer(tenant).data,
+            # "tenant": TenantSerializer(tenant).data,
+            "tenant": PublicTenantBootstrapSerializer(tenant).data,
         }, status=status.HTTP_201_CREATED)
 
 
@@ -623,7 +624,8 @@ class ProvisionTenantView(generics.ListCreateAPIView):
 
         return Response({
             "message": "Tenant provisioned created successfully",
-            "tenant": TenantSerializer(tenant).data,
+            # "tenant": TenantSerializer(tenant).data,
+            "tenant": ProvisionTenantSerializer(tenant).data
         }, status=status.HTTP_201_CREATED)
 
 # class userListCreateView(generics.ListCreateAPIView):

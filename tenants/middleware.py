@@ -20,6 +20,7 @@ class TenantPaymentRequiredMiddleware:
                 return self.get_response(request)
             if request.path.startswith('/api/chapa-verify/<str:reference>/'):
                 return self.get_response(request)
+           
 
             
             if tenant.on_trial and tenant.paid_until and tenant.paid_until <= today:
