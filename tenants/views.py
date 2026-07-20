@@ -13,9 +13,13 @@ from datetime import timedelta
 from django.http import Http404, JsonResponse
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
-from rest_framework import generics, status
+from rest_framework import generics, status, permissions
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from .models import SubscriptionPlan, Tenant, UserAccount, TenantPayment
+from .user_permission import IsTenantOwnerOrAdmin, IsTenantUser, HasModelPermissionForTenant, HasTenantPermission
+from django_tenants.utils import get_public_schema_name, schema_context
+from django.contrib.auth.models import Group, Permission
 
 from .serializers import (
     PublicTenantBootstrapSerializer,
@@ -31,7 +35,7 @@ from .serializers import (
 )
 from django.db import IntegrityError, transaction
 import time
-
+import logging
 
 class ChapaPaymentInitView(generics.GenericAPIView):
     serializer_class = ChapaInitSerializer
@@ -47,20 +51,11 @@ class ChapaPaymentInitView(generics.GenericAPIView):
             plan = serializer.validated_data.get("plan", None)
         except SubscriptionPlan.DoesNotExist:
             return Response({"detail": "Invalid plan ID"}, status=status.HTTP_400_BAD_REQUEST)
-
+       
         tenant = request.tenant
+        print(f"Tenant: {tenant}")
         if not tenant:
             return Response({"detail": "No tenant context"}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Create a payment record
-        # payment = TenantPayment.objects.create(
-        #     tenant=tenant,
-        #     amount=plan.price,
-        #     plan=plan,
-        #     status="pending",
-        #     reference=str(uuid.uuid4()),  # Unique reference
-        # )
-        reference = str(uuid.uuid4())
        
         # Prepare data for Chapa payment initiation
         # ensure we have a valid email to send to Chapa (Chapa validates format)
@@ -73,29 +68,20 @@ class ChapaPaymentInitView(generics.GenericAPIView):
             return Response({"detail": "Tenant owner email is invalid."}, status=status.HTTP_400_BAD_REQUEST)
 
         # Truncate customization title to 16 chars per Chapa validation
-        customization_title = (plan.name or "Subscription")[:16]
+        customization_title = (plan.name or "Subscription")[:16]       
 
-        # Build callback URL: prefer explicit CHAPA_WEBHOOK_URL in settings,
-        # otherwise build absolute URL for the `chapa-webhook` route.
-        webhook_setting = getattr(settings, 'CHAPA_WEBHOOK_URL', None)
-        if webhook_setting:
-            if '<tx_ref>' in webhook_setting:
-                callback_url = webhook_setting.replace('<tx_ref>', reference)
-            else:
-                callback_url = webhook_setting.rstrip('/') + f"?tx_ref={reference}"
-        else:
-            webhook_path = reverse('chapa-webhook')
-            callback_url = request.build_absolute_uri(webhook_path) + f"?tx_ref={reference}"
-
+        reference = str(uuid.uuid4())
+        callback_url = f"http://{tenant if tenant else 'default'}.localhost:8000/api/chapa-verify/{reference}/"  # Adjust as needed for your domain and route
+        return_url = f"http://{tenant if tenant else 'default'}.localhost:8000/api/chapa-verify/{reference}/"  # Adjust as needed for your domain and route
         chapa_data = {
             "amount": str(plan.price),
             "currency": "ETB",
             "email": owner_email,
-            # "first_name": tenant.owner.username,
+            
             "tx_ref": reference,
             # callback_url should point to your webhook that accepts Chapa POSTs
             "callback_url": callback_url,
-            # "return_url": "https://your-return-url.com/payment/return/",
+            "return_url": return_url,
             # "return_url": settings.FRONTEND_PAYMENT_REDIRECT,
             "customization": {
                 "title": customization_title,
@@ -133,6 +119,9 @@ class ChapaPaymentInitView(generics.GenericAPIView):
             reference=reference,  # Unique reference 
             provider="chapa"
         )
+        tenant = payment.tenant
+        tenant.paid_until = timezone.now().date() + timedelta(days=3)  # 3 days grace period
+        tenant.save()
 
         payment_url = chapa_response.get("data", {}).get("checkout_url")
 
@@ -144,6 +133,156 @@ class ChapaPaymentInitView(generics.GenericAPIView):
 class ChapaPaymentVerifyView(generics.GenericAPIView):
         
     serializer_class = PaymentVerifySerializer
+    def get(self, request, reference):
+        # chapa payment verification
+
+
+        try:
+            payment = TenantPayment.objects.get(reference=reference)
+            if not payment:
+                return Response({"detail": "Invalid reference"}, status=status.HTTP_404_NOT_FOUND)
+        except TenantPayment.DoesNotExist:
+            return Response({"detail": "Payment not found"}, status=status.HTTP_404_NOT_FOUND)  
+
+
+
+        headers = {"Authorization": f"Bearer {CHAPA_SECRET_KEY}"}
+        try:
+            response = requests.get(f"{CHAPA_BASE_URL}/transaction/verify/{reference}", headers=headers)
+        except requests.RequestException as exc:
+            return Response({"detail": "Failed to verify payment with Chapa", "error": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        if not response.ok:
+            try:
+                body = response.json()
+            except Exception:
+                body = response.text
+            return Response({"detail": "Failed to verify payment with Chapa", "chapa_response": body, "status_code": response.status_code}, status=status.HTTP_502_BAD_GATEWAY)
+
+        chapa_response = response.json()
+        if chapa_response.get("status") != "success":
+            # or chapa_response["data"]["status"] != "successful":
+            return Response({"detail": "Payment verification failed"}, status=status.HTTP_400_BAD_REQUEST)
+        
+
+        data = chapa_response.get("data",{})
+        if data.get("status") == "success" and float(data.get("amount", 0)) == float(payment.amount):            
+            if payment.status != "paid_verified":
+                payment.status = "paid_verified"
+                payment.paid_at = timezone.now()
+                # Safely compute expiry days
+                days = payment.plan.duration_days if (payment.plan and getattr(payment.plan, 'duration_days', None) is not None) else 0
+                payment.expires_at = timezone.now().date() + timedelta(days=days)
+                payment.save()
+
+                # Update tenant's paid_until date
+                tenant = payment.tenant
+                tenant.paid_until = payment.expires_at
+                tenant.grace_until = tenant.paid_until + timedelta(days=1)  # 1 day grace period
+                tenant.on_trial = False
+                tenant.save()
+
+    
+            return Response({"detail": "Payment verified successfully", "chapa_response": chapa_response}, status=status.HTTP_200_OK)
+        else:
+            return Response({"detail": "Payment verification failed", "chapa_response": chapa_response}, status=status.HTTP_400_BAD_REQUEST)    
+
+
+# class ChapaPaymentInitView(generics.GenericAPIView):
+#     serializer_class = ChapaInitSerializer
+#     def post(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+#         serializer.is_valid(raise_exception=True)      
+#         try:            
+#             plan = serializer.validated_data.get("plan", None)
+#         except SubscriptionPlan.DoesNotExist:
+#             return Response({"detail": "Invalid plan ID"}, status=status.HTTP_400_BAD_REQUEST)
+
+#         tenant = request.tenant
+#         if not tenant:
+#             return Response({"detail": "No tenant context"}, status=status.HTTP_400_BAD_REQUEST)
+
+#         # Prepare data for Chapa payment initiation
+#         # ensure we have a valid email to send to Chapa (Chapa validates format)
+#         owner_email = getattr(getattr(tenant, 'owner', None), 'email', None) or (getattr(request, 'user', None) and getattr(request.user, 'email', None))
+#         if not owner_email:
+#             return Response({"detail": "Tenant owner email not set; cannot initiate payment."}, status=status.HTTP_400_BAD_REQUEST)
+#         try:
+#             validate_email(owner_email)
+#         except DjangoValidationError:
+#             return Response({"detail": "Tenant owner email is invalid."}, status=status.HTTP_400_BAD_REQUEST)
+
+#         # Truncate customization title to 16 chars per Chapa validation
+#         customization_title = (plan.name or "Subscription")[:16]
+#         reference = str(uuid.uuid4())
+#         # Build callback URL: prefer explicit CHAPA_WEBHOOK_URL in settings,
+#         # otherwise build absolute URL for the `chapa-webhook` route.
+#         webhook_setting = getattr(settings, 'CHAPA_WEBHOOK_URL', None)
+#         if webhook_setting:
+#             if '<tx_ref>' in webhook_setting:
+#                 callback_url = webhook_setting.replace('<tx_ref>', reference)
+#             else:
+#                 callback_url = webhook_setting.rstrip('/') + f"?tx_ref={reference}"
+#         else:
+#             webhook_path = reverse('chapa-webhook')
+#             callback_url = request.build_absolute_uri(webhook_path) + f"?tx_ref={reference}"
+
+#         chapa_data = {
+#             "amount": str(plan.price),
+#             "currency": "ETB",
+#             "email": owner_email,
+#             # "first_name": tenant.owner.username,
+#             "tx_ref": reference,
+#             # callback_url should point to your webhook that accepts Chapa POSTs
+#             "callback_url": callback_url,
+#             "return_url": callback_url,
+#             # "return_url": settings.FRONTEND_PAYMENT_REDIRECT,
+#             "customization": {
+#                 "title": customization_title,
+#                 "description": plan.name
+#             }
+#         }
+
+#         headers = {
+#             "Authorization": f"Bearer {CHAPA_SECRET_KEY}",
+#             "Content-Type": "application/json",
+#         }
+
+#         # Initiate payment with Chapa
+#         try:
+#             response = requests.post(f"{CHAPA_BASE_URL}/transaction/initialize", json=chapa_data, headers=headers, timeout=10)
+#         except requests.RequestException as exc:
+#             return Response({"detail": "Failed to initiate payment with Chapa", "error": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
+#         if not response.ok:
+#             try:
+#                 body = response.json()
+#             except Exception:
+#                 body = response.text
+#             return Response({"detail": "Failed to initiate payment with Chapa", "chapa_response": body, "status_code": response.status_code}, status=status.HTTP_502_BAD_GATEWAY)
+
+#         chapa_response = response.json()
+#         if chapa_response.get("status") != "success":
+#             return Response({"detail": "Chapa payment initiation failed", "chapa_response": chapa_response}, status=status.HTTP_400_BAD_REQUEST)
+
+#         payment = TenantPayment.objects.create(
+#             tenant=tenant,
+#             amount=plan.price,
+#             plan=plan,
+#             status="pending",
+#             reference=reference,  # Unique reference 
+#             provider="chapa"
+#         )
+
+#         payment_url = chapa_response.get("data", {}).get("checkout_url")
+
+#         return Response({
+#             "reference": payment.reference,
+#             "payment_url": payment_url
+#         }, status=status.HTTP_201_CREATED)
+    
+# class ChapaPaymentVerifyView(generics.GenericAPIView):        
+#     serializer_class = PaymentVerifySerializer
     # def get(self, request, reference):
     #     # chapa payment verification
     #     headers = {"Authorization": f"Bearer {CHAPA_PUBLIC_KEY}"}
@@ -163,142 +302,142 @@ class ChapaPaymentVerifyView(generics.GenericAPIView):
     #     if chapa_response.get("status") != "success" or chapa_response["data"]["status"] != "successful":
     #         return Response({"detail": "Payment verification failed"}, status=status.HTTP_400_BAD_REQUEST)
 
-    def post(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        reference = serializer.validated_data["reference"]
+    # def post(self, request, *args, **kwargs):
+    #     serializer = self.get_serializer(data=request.data)
+    #     serializer.is_valid(raise_exception=True)
+    #     reference = serializer.validated_data["reference"]
 
-        try:
-            payment = TenantPayment.objects.get(reference=reference)
-            if not payment:
-                return Response({"detail": "Invalid reference"}, status=status.HTTP_404_NOT_FOUND)
-            if payment.tenant != request.tenant:
-                return Response({"detail": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
-        except TenantPayment.DoesNotExist:
-            return Response({"detail": "Payment not found"}, status=status.HTTP_404_NOT_FOUND)
+    #     try:
+    #         payment = TenantPayment.objects.get(reference=reference)
+    #         if not payment:
+    #             return Response({"detail": "Invalid reference"}, status=status.HTTP_404_NOT_FOUND)
+    #         if payment.tenant != request.tenant:
+    #             return Response({"detail": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
+    #     except TenantPayment.DoesNotExist:
+    #         return Response({"detail": "Payment not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        headers = {
-            # Use secret key for server-to-server verification
-            "Authorization": f"Bearer {CHAPA_SECRET_KEY}",
-            "Content-Type": "application/json",
-        }
+    #     headers = {
+    #         # Use secret key for server-to-server verification
+    #         "Authorization": f"Bearer {CHAPA_SECRET_KEY}",
+    #         "Content-Type": "application/json",
+    #     }
 
-        # Verify payment with Chapa (robust error handling and debug info)
-        try:
-            response = requests.get(f"{CHAPA_BASE_URL}/transaction/verify/{reference}", headers=headers, timeout=10)
-        except requests.RequestException as exc:
-            return Response({"detail": "Failed to verify payment with Chapa", "error": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+    #     # Verify payment with Chapa (robust error handling and debug info)
+    #     try:
+    #         response = requests.get(f"{CHAPA_BASE_URL}/transaction/verify/{reference}", headers=headers, timeout=10)
+    #     except requests.RequestException as exc:
+    #         return Response({"detail": "Failed to verify payment with Chapa", "error": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
 
-        if not response.ok:
-            try:
-                body = response.json()
-            except Exception:
-                body = response.text
-            return Response({"detail": "Failed to verify payment with Chapa", "chapa_response": body, "status_code": response.status_code}, status=status.HTTP_502_BAD_GATEWAY)
+    #     if not response.ok:
+    #         try:
+    #             body = response.json()
+    #         except Exception:
+    #             body = response.text
+    #         return Response({"detail": "Failed to verify payment with Chapa", "chapa_response": body, "status_code": response.status_code}, status=status.HTTP_502_BAD_GATEWAY)
 
-        chapa_response = response.json()
-        # Chapa may return data.status as 'success' (test) or 'successful' (live); accept both
-        chapa_data_status = chapa_response.get("data", {}).get("status")
-        if chapa_response.get("status") != "success" or chapa_data_status not in ("successful", "success"):
-            return Response({"detail": "Payment verification failed", "chapa_response": chapa_response}, status=status.HTTP_400_BAD_REQUEST)
+    #     chapa_response = response.json()
+    #     # Chapa may return data.status as 'success' (test) or 'successful' (live); accept both
+    #     chapa_data_status = chapa_response.get("data", {}).get("status")
+    #     if chapa_response.get("status") != "success" or chapa_data_status not in ("successful", "success"):
+    #         return Response({"detail": "Payment verification failed", "chapa_response": chapa_response}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Update payment record
-        if chapa_response.get("status") == "success" and chapa_data_status in ("successful", "success"):
-            if payment.status != "paid_verified":
-                payment.status = "paid_verified"
-                payment.paid_at = timezone.now()
-                # Safely compute expiry days
-                days = payment.plan.duration_days if (payment.plan and getattr(payment.plan, 'duration_days', None) is not None) else 0
-                payment.expires_at = timezone.now().date() + timedelta(days=days)
-                payment.save()
+    #     # Update payment record
+    #     if chapa_response.get("status") == "success" and chapa_data_status in ("successful", "success"):
+    #         if payment.status != "paid_verified":
+    #             payment.status = "paid_verified"
+    #             payment.paid_at = timezone.now()
+    #             # Safely compute expiry days
+    #             days = payment.plan.duration_days if (payment.plan and getattr(payment.plan, 'duration_days', None) is not None) else 0
+    #             payment.expires_at = timezone.now().date() + timedelta(days=days)
+    #             payment.save()
 
-                # Update tenant's paid_until date
-                tenant = payment.tenant
-                tenant.paid_until = payment.expires_at
-                tenant.grace_until = tenant.paid_until + timedelta(days=3)  # 3 days grace period
-                tenant.on_trial = False
-                tenant.save()
+    #             # Update tenant's paid_until date
+    #             tenant = payment.tenant
+    #             tenant.paid_until = payment.expires_at
+    #             tenant.grace_until = tenant.paid_until + timedelta(days=3)  # 3 days grace period
+    #             tenant.on_trial = False
+    #             tenant.save()
 
-        return Response({"detail": "Payment verified successfully"}, status=status.HTTP_200_OK)    
+    #     return Response({"detail": "Payment verified successfully"}, status=status.HTTP_200_OK)    
 
 
-@csrf_exempt
-def chapa_webhook(request):
-    """Handle Chapa webhook callbacks.
+# @csrf_exempt
+# def chapa_webhook(request):
+#     """Handle Chapa webhook callbacks.
 
-    Expects JSON payload from Chapa. Will verify signature if
-    `CHAPA_WEBHOOK_SECRET` is set in settings. It will then perform
-    a server-to-server verify and update the `TenantPayment` record
-    idempotently.
-    """
-    if request.method != 'POST':
-        return JsonResponse({'detail': 'Method not allowed'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+#     Expects JSON payload from Chapa. Will verify signature if
+#     `CHAPA_WEBHOOK_SECRET` is set in settings. It will then perform
+#     a server-to-server verify and update the `TenantPayment` record
+#     idempotently.
+#     """
+#     # if request.method != 'POST':
+#         # return JsonResponse({'detail': 'Method not allowed'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
-    try:
-        payload = request.body or b'{}'
-        data = json.loads(payload.decode('utf-8'))
-    except Exception:
-        return JsonResponse({'detail': 'Invalid JSON payload'}, status=status.HTTP_400_BAD_REQUEST)
+#     try:
+#         payload = request.body or b'{}'
+#         data = json.loads(payload.decode('utf-8'))
+#     except Exception:
+#         return JsonResponse({'detail': 'Invalid JSON payload'}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Optional signature verification
-    webhook_secret = getattr(settings, 'CHAPA_WEBHOOK_SECRET', None)
-    sig_header = request.META.get('HTTP_X_CHAPA_SIGNATURE') or request.META.get('HTTP_X_SIGNATURE')
-    if webhook_secret and sig_header:
-        expected = hmac.new(webhook_secret.encode(), payload, hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(expected, sig_header):
-            return JsonResponse({'detail': 'Invalid webhook signature'}, status=status.HTTP_400_BAD_REQUEST)
+#     # Optional signature verification
+#     webhook_secret = getattr(settings, 'CHAPA_WEBHOOK_SECRET', None)
+#     sig_header = request.META.get('HTTP_X_CHAPA_SIGNATURE') or request.META.get('HTTP_X_SIGNATURE')
+#     if webhook_secret and sig_header:
+#         expected = hmac.new(webhook_secret.encode(), payload, hashlib.sha256).hexdigest()
+#         if not hmac.compare_digest(expected, sig_header):
+#             return JsonResponse({'detail': 'Invalid webhook signature'}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Extract tx_ref (our reference) or chapa reference
-    tx_ref = data.get('tx_ref') or data.get('data', {}).get('tx_ref')
-    chapa_reference = data.get('reference') or data.get('data', {}).get('reference')
+#     # Extract tx_ref (our reference) or chapa reference
+#     tx_ref = data.get('tx_ref') or data.get('data', {}).get('tx_ref')
+#     chapa_reference = data.get('reference') or data.get('data', {}).get('reference')
 
-    ref = tx_ref or chapa_reference
-    if not ref:
-        return JsonResponse({'detail': 'Missing reference in webhook payload'}, status=status.HTTP_400_BAD_REQUEST)
+#     ref = tx_ref or chapa_reference
+#     if not ref:
+#         return JsonResponse({'detail': 'Missing reference in webhook payload'}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Try to find TenantPayment by our tx_ref first, then by chapa reference
-    payment = None
-    if tx_ref:
-        payment = TenantPayment.objects.filter(reference=tx_ref).first()
-    if not payment and chapa_reference:
-        payment = TenantPayment.objects.filter(reference=chapa_reference).first()
+#     # Try to find TenantPayment by our tx_ref first, then by chapa reference
+#     payment = None
+#     if tx_ref:
+#         payment = TenantPayment.objects.filter(reference=tx_ref).first()
+#     if not payment and chapa_reference:
+#         payment = TenantPayment.objects.filter(reference=chapa_reference).first()
 
-    if not payment:
-        # Nothing to update; return 200 so provider doesn't keep retrying
-        return JsonResponse({'detail': 'Payment not found'}, status=status.HTTP_200_OK)
+#     if not payment:
+#         # Nothing to update; return 200 so provider doesn't keep retrying
+#         return JsonResponse({'detail': 'Payment not found'}, status=status.HTTP_200_OK)
 
-    # If already verified, respond 200
-    if payment.status == 'paid_verified':
-        return JsonResponse({'detail': 'Already verified'}, status=status.HTTP_200_OK)
+#     # If already verified, respond 200
+#     if payment.status == 'paid_verified':
+#         return JsonResponse({'detail': 'Already verified'}, status=status.HTTP_200_OK)
 
-    # Do server-to-server verify for extra safety
-    headers = {
-        'Authorization': f"Bearer {getattr(settings, 'CHAPA_SECRET_KEY', '')}",
-    }
-    try:
-        resp = requests.get(f"{getattr(settings, 'CHAPA_BASE_URL', '')}/transaction/verify/{ref}", headers=headers, timeout=10)
-        if not resp.ok:
-            return JsonResponse({'detail': 'Chapa verify failed', 'status_code': resp.status_code}, status=status.HTTP_200_OK)
-        chapa_resp = resp.json()
-    except Exception:
-        return JsonResponse({'detail': 'Chapa verification error'}, status=status.HTTP_200_OK)
+#     # Do server-to-server verify for extra safety
+#     headers = {
+#         'Authorization': f"Bearer {getattr(settings, 'CHAPA_SECRET_KEY', '')}",
+#     }
+#     try:
+#         resp = requests.get(f"{getattr(settings, 'CHAPA_BASE_URL', '')}/transaction/verify/{ref}", headers=headers, timeout=10)
+#         if not resp.ok:
+#             return JsonResponse({'detail': 'Chapa verify failed', 'status_code': resp.status_code}, status=status.HTTP_200_OK)
+#         chapa_resp = resp.json()
+#     except Exception:
+#         return JsonResponse({'detail': 'Chapa verification error'}, status=status.HTTP_200_OK)
 
-    chapa_data_status = chapa_resp.get('data', {}).get('status')
-    if chapa_resp.get('status') == 'success' and chapa_data_status in ('successful', 'success'):
-        # mark payment
-        payment.status = 'paid_verified'
-        payment.paid_at = timezone.now()
-        days = payment.plan.duration_days if (payment.plan and getattr(payment.plan, 'duration_days', None) is not None) else 0
-        payment.expires_at = timezone.now().date() + timedelta(days=days)
-        payment.save()
+#     chapa_data_status = chapa_resp.get('data', {}).get('status')
+#     if chapa_resp.get('status') == 'success' and chapa_data_status in ('successful', 'success'):
+#         # mark payment
+#         payment.status = 'paid_verified'
+#         payment.paid_at = timezone.now()
+#         days = payment.plan.duration_days if (payment.plan and getattr(payment.plan, 'duration_days', None) is not None) else 0
+#         payment.expires_at = timezone.now().date() + timedelta(days=days)
+#         payment.save()
 
-        tenant = payment.tenant
-        tenant.paid_until = payment.expires_at
-        tenant.grace_until = tenant.paid_until + timedelta(days=3)
-        tenant.on_trial = False
-        tenant.save()
+#         tenant = payment.tenant
+#         tenant.paid_until = payment.expires_at
+#         tenant.grace_until = tenant.paid_until + timedelta(days=3)
+#         tenant.on_trial = False
+#         tenant.save()
 
-    return JsonResponse({'detail': 'webhook processed'}, status=status.HTTP_200_OK)
+#     return JsonResponse({'detail': 'webhook processed'}, status=status.HTTP_200_OK)
     
 
 
@@ -449,7 +588,8 @@ class PublicTenantBootstrapView(generics.ListCreateAPIView):
 
         return Response({
             "message": "Public tenant created successfully",
-            "tenant": TenantSerializer(tenant).data,
+            # "tenant": TenantSerializer(tenant).data,
+            "tenant": PublicTenantBootstrapSerializer(tenant).data,
         }, status=status.HTTP_201_CREATED)
 
 
@@ -484,57 +624,82 @@ class ProvisionTenantView(generics.ListCreateAPIView):
 
         return Response({
             "message": "Tenant provisioned created successfully",
-            "tenant": TenantSerializer(tenant).data,
+            # "tenant": TenantSerializer(tenant).data,
+            "tenant": ProvisionTenantSerializer(tenant).data
         }, status=status.HTTP_201_CREATED)
 
-class userListCreateView(generics.ListCreateAPIView):
-    queryset = UserAccount.objects.order_by('id')
-    serializer_class = userSerializer
-class TenantListCreateView(generics.ListCreateAPIView):
-    queryset = Tenant.objects.order_by('id')
-    serializer_class = TenantSerializer
+# class userListCreateView(generics.ListCreateAPIView):
+#     queryset = UserAccount.objects.order_by('id')
+#     serializer_class = userSerializer
+# class TenantListCreateView(generics.ListCreateAPIView):
+#     queryset = Tenant.objects.order_by('id')
+#     serializer_class = TenantSerializer
 
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        tenant = serializer.save()
-        headers = self.get_success_headers(serializer.data)
-        return Response(
-            {
-                "message": "Tenant created successfully",
-                "tenant": TenantSerializer(tenant).data
-            },
-            status=status.HTTP_201_CREATED,
-            headers=headers
-        )
-
-
-from rest_framework import permissions, serializers
-from django_tenants.utils import get_public_schema_name, schema_context
-from django.contrib.auth.models import Group, Permission
+#     def create(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+#         serializer.is_valid(raise_exception=True)
+#         tenant = serializer.save()
+#         headers = self.get_success_headers(serializer.data)
+#         return Response(
+#             {
+#                 "message": "Tenant created successfully",
+#                 "tenant": TenantSerializer(tenant).data
+#             },
+#             status=status.HTTP_201_CREATED,
+#             headers=headers
+#         )
 
 
-class IsTenantOwnerOrAdmin(permissions.BasePermission):
-    def has_permission(self, request, view):
+
+
+
+class AvailablePermissionsView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsTenantUser]
+
+    def get(self, request):
         tenant = getattr(request, 'tenant', None)
-        if not tenant or not request.user or not request.user.is_authenticated:
-            return False
-        try:
-            return request.user == tenant.owner or getattr(request.user, 'usertenantpermissions', None) and request.user.usertenantpermissions.is_superuser
-        except Exception:
-            return False
-class IsTenantUser(permissions.BasePermission):
-    def has_permission(self, request, view):
+        if not tenant:
+            return Response({'detail': 'No tenant context'}, status=status.HTTP_400_BAD_REQUEST)
+
+        with schema_context(tenant.schema_name):
+            perms = Permission.objects.all().order_by('content_type__app_label', 'codename')
+            data = [f"{p.content_type.app_label}.{p.codename}" for p in perms]
+
+        return Response({'tenant_permissions': data})
+
+class CurrentTenantPermissionsView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsTenantUser]
+
+    def get(self, request):
         tenant = getattr(request, 'tenant', None)
-        if not tenant or not request.user or not request.user.is_authenticated:
-            return False
-        try:
-            return tenant in request.user.tenants.all()
-        except Exception:
-            return False
+        user = getattr(request, 'user', None)
+        if not tenant or not user:
+            return Response({'detail': 'No tenant context or user'}, status=status.HTTP_400_BAD_REQUEST)
+
+        with schema_context(tenant.schema_name):
+            try:
+                tenant_user = UserAccount.objects.get(pk=user.pk)
+                groups = [g.name for g in tenant_user.usertenantpermissions.groups.all()]
+                permissions = sorted(tenant_user.get_all_permissions())
+            except Exception as exc:
+                return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({'tenant_groups': groups, 'tenant_permissions': permissions})
+
+class TenantPermissionProtectedView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasTenantPermission]
+    permission_required = 'inventory.change_category'
+
+    def get(self, request, *args, **kwargs):
+        return Response({
+            'detail': 'You have tenant permission to access this endpoint.',
+            'tenant_groups': [g.name for g in request.user.usertenantpermissions.groups.all()],
+            'tenant_permissions': sorted(request.user.get_all_permissions())
+        })
+
 class TenantGroupCreateView(generics.ListCreateAPIView):
     serializer_class = GroupSerializer
-    # permission_classes = [permissions.IsAuthenticated, IsTenantOwnerOrAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsTenantOwnerOrAdmin]
 
     # to get group name and permissions list from request data, create group and assign permissions within tenant schema context
     def get_queryset(self):
@@ -572,10 +737,38 @@ class TenantGroupCreateView(generics.ListCreateAPIView):
         status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         return Response(GroupSerializer(group).data, status=status_code)
 
+class TenantGroupDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = GroupSerializer  
+    permission_classes = [permissions.IsAuthenticated, IsTenantOwnerOrAdmin]  
+    # authentication_classes = [JWTAuthentication, SessionAuthentication]
+    # permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    def get_object(self):
+        tenant = getattr(self.request, 'tenant', None)
+        group_id = self.kwargs.get('pk')
+        if not tenant:
+            raise Http404
+        with schema_context(tenant.schema_name):
+            group = Group.objects.filter(pk=group_id).first()
+            if not group:
+                raise Http404
+            return group
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        return Response({
+            "message": "Group updated successfully",
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)   
+
 class TenantUserCreateView(generics.ListCreateAPIView):
     serializer_class = TenantUserCreateSerializer
     queryset = UserAccount.objects.order_by('id')
-    # permission_classes = [permissions.IsAuthenticated, IsTenantOwnerOrAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsTenantOwnerOrAdmin]
     def get_queryset(self):
         tenant = getattr(self.request, 'tenant', None)
         return UserAccount.objects.filter(tenants=tenant)
@@ -622,7 +815,7 @@ class TenantUserCreateView(generics.ListCreateAPIView):
 
 class TenantUserUpdateView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = TenantUserUpdateSerializer
-    # permission_classes = [permissions.IsAuthenticated, IsTenantOwnerOrAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsTenantOwnerOrAdmin]
 
     # lookup by public user id or pk; ensure the user belongs to this tenant
     def get_object(self):
@@ -680,6 +873,9 @@ class UserPermissionsView(generics.GenericAPIView):
     def get(self, request):
         tenant = getattr(request, 'tenant', None)
         user = request.user
+        if not user or not user.is_authenticated:
+            return Response({'detail': 'User not authenticated'}, status=401)
+        tenant_user = UserAccount.objects.get(pk=user.pk)
         
         if not tenant:
             return Response({'detail': 'No tenant context'}, status=400)
@@ -687,42 +883,13 @@ class UserPermissionsView(generics.GenericAPIView):
         from django_tenants.utils import schema_context
         with schema_context(tenant.schema_name):
             permissions = sorted(user.get_all_permissions())
-            groups = [g.name for g in user.usertenantpermissions.groups.all()]
+            groups = [g.name for g in tenant_user.usertenantpermissions.groups.all()]
         
         return Response({
             'tenant_groups': groups,
             'tenant_permissions': permissions
         }) 
-    # def get(self, request):
-    #     tenant = getattr(request, 'tenant', None)
-    #     user = request.user
-        
-    #     if not tenant:
-    #         return Response({'detail': 'No tenant context'}, status=400)
-        
-    #     with schema_context(tenant.schema_name):
-    #         try:
-    #             utp = user.usertenantpermissions
-    #             groups = [g.name for g in utp.groups.all()]
-                
-    #             # Debug: get permissions from each group
-    #             group_perms = {}
-    #             for g in utp.groups.all():
-    #                 group_perms[g.name] = [f"{p.content_type.app_label}.{p.codename}" for p in g.permissions.all()]
-                
-    #             all_perms = sorted(user.get_all_permissions())
-                
-    #             return Response({
-    #                 'groups': groups,
-    #                 'group_permissions': group_perms,
-    #                 'all_permissions': all_perms,
-    #                 'has_utp': True
-    #             })
-    #         except Exception as e:
-    #             return Response({
-    #                 'error': str(e),
-    #                 'has_utp': False
-    #             }, status=400)
+    
 
 
 class AvailablePermissionsView(generics.GenericAPIView):

@@ -27,7 +27,10 @@ class ChapaInitSerializer(serializers.Serializer):
     provider = serializers.CharField(
         read_only=True)
 class ChapaVerifySerializer(serializers.Serializer):
-    reference = serializers.CharField(required=True)    
+    # reference = serializers.CharField(required=True)
+    class Meta:
+        model = TenantPayment
+        fields = ['id','plan']      
 class PaymentInitSerializer(serializers.Serializer):
     plan = serializers.PrimaryKeyRelatedField(
         queryset=SubscriptionPlan.objects.all(),
@@ -65,54 +68,123 @@ class userSerializer(serializers.ModelSerializer):
         model = UserAccount
         fields = ['id', 'username', 'email', 'is_superuser']
  
+# class GroupSerializer(serializers.ModelSerializer):
+#     permissions = serializers.PrimaryKeyRelatedField(   
+#         queryset=Permission.objects.filter(content_type__app_label__in=['tenants', 'tenant_users', 'inventory']),
+#         many=True,
+#         required=False
+#     )
+#     class Meta:
+#         model = Group
+#         fields = ['id', 'name', 'permissions']
+
+#     def validate_permissions(self, value):
+#         allowed_apps = ['tenants', 'tenant_users', 'inventory']
+#         errors = []
+#         for perm_str in value:
+#             if '.' not in perm_str:
+#                 errors.append('Permission strings must be in format "app_label.codename"')
+#                 continue
+#             app_label, codename = perm_str.split('.', 1)
+#             if app_label not in allowed_apps:
+#                 errors.append(f'App "{app_label}" is not allowed. Allowed apps: {allowed_apps}')
+#                 continue
+#             # ensure the permission actually exists
+#             perm = Permission.objects.filter(content_type__app_label=app_label, codename=codename).first()
+#             if not perm:
+#                 errors.append(f'Permission not found: {perm_str}')
+
+#         if errors:
+#             raise serializers.ValidationError({'permissions': errors})
+#         return value
+
+#     def create(self, validated_data):
+#         perms = validated_data.pop('permissions', []) or []
+#         group, created = Group.objects.get_or_create(name=validated_data['name'])
+#         if perms:
+#             group.permissions.clear()
+#             for perm_str in perms:
+#                 app_label, codename = perm_str.split('.', 1)
+#                 perm = Permission.objects.filter(content_type__app_label=app_label, codename=codename).first()
+#                 if not perm:
+#                     raise serializers.ValidationError({'permissions': f'Permission not found: {perm_str}'})
+#                 group.permissions.add(perm)
+#         group.save()
+#         return group
+
+#     def to_representation(self, instance):
+#         rep = super().to_representation(instance)
+#         rep['permissions'] = [f"{p.content_type.app_label}.{p.codename}" for p in instance.permissions.all()]
+#         return rep
+
 class GroupSerializer(serializers.ModelSerializer):
-    permissions = serializers.PrimaryKeyRelatedField(   
-        queryset=Permission.objects.filter(content_type__app_label__in=['tenants', 'tenant_users', 'inventory']),
-        many=True,
+    permissions = serializers.ListField(
+        child=serializers.CharField(),
         required=False
     )
+
     class Meta:
         model = Group
-        fields = ['id', 'name', 'permissions']
+        fields = ["id", "name", "permissions"]
 
-    def validate_permissions(self, value):
-        allowed_apps = ['tenants', 'tenant_users', 'inventory']
-        errors = []
-        for perm_str in value:
-            if '.' not in perm_str:
-                errors.append('Permission strings must be in format "app_label.codename"')
-                continue
-            app_label, codename = perm_str.split('.', 1)
+    def validate_permissions(self, permissions):
+        allowed_apps = ["tenants", "tenant_users", "inventory"]
+
+        permission_objects = []
+
+        for perm in permissions:
+            try:
+                app_label, codename = perm.split(".", 1)
+            except ValueError:
+                raise serializers.ValidationError(
+                    f'Permission "{perm}" must be in the format "app_label.codename".'
+                )
+
             if app_label not in allowed_apps:
-                errors.append(f'App "{app_label}" is not allowed. Allowed apps: {allowed_apps}')
-                continue
-            # ensure the permission actually exists
-            perm = Permission.objects.filter(content_type__app_label=app_label, codename=codename).first()
-            if not perm:
-                errors.append(f'Permission not found: {perm_str}')
+                raise serializers.ValidationError(
+                    f'"{app_label}" is not an allowed app.'
+                )
 
-        if errors:
-            raise serializers.ValidationError({'permissions': errors})
-        return value
+            try:
+                permission = Permission.objects.get(
+                    content_type__app_label=app_label,
+                    codename=codename
+                )
+            except Permission.DoesNotExist:
+                raise serializers.ValidationError(
+                    f'Permission "{perm}" does not exist.'
+                )
+
+            permission_objects.append(permission)
+
+        return permission_objects
 
     def create(self, validated_data):
-        perms = validated_data.pop('permissions', []) or []
-        group, created = Group.objects.get_or_create(name=validated_data['name'])
-        if perms:
-            group.permissions.clear()
-            for perm_str in perms:
-                app_label, codename = perm_str.split('.', 1)
-                perm = Permission.objects.filter(content_type__app_label=app_label, codename=codename).first()
-                if not perm:
-                    raise serializers.ValidationError({'permissions': f'Permission not found: {perm_str}'})
-                group.permissions.add(perm)
-        group.save()
+        permissions = validated_data.pop("permissions", [])
+        group = Group.objects.create(**validated_data)
+        group.permissions.set(permissions)
         return group
 
+    def update(self, instance, validated_data):
+        permissions = validated_data.pop("permissions", None)
+
+        instance.name = validated_data.get("name", instance.name)
+        instance.save()
+
+        if permissions is not None:
+            instance.permissions.set(permissions)
+
+        return instance
+
     def to_representation(self, instance):
-        rep = super().to_representation(instance)
-        rep['permissions'] = [f"{p.content_type.app_label}.{p.codename}" for p in instance.permissions.all()]
-        return rep
+        return {
+            "id": instance.id,
+            "name": instance.name,
+            "permissions": [
+                f"{p.content_type.app_label}.{p.codename}"
+                for p in instance.permissions.all()
+            ]
+        }
 class OwnerCreateSerializer(serializers.Serializer):
     # username = serializers.CharField(required=False, allow_blank=True)
     email = serializers.EmailField()
