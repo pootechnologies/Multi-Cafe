@@ -216,6 +216,26 @@ USE_I18N = True
 USE_TZ = True
 
 
+
+
+# Email backend
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = "pootechnologies1@gmail.com"
+EMAIL_HOST_PASSWORD = "tpsf pwst jsjp pggf"
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+
+# DEFAULT_FROM_EMAIL = 'firewayele89@gmail.com'
+# Direct Django verification link. Change this to your public HTTPS API URL in production.
+EMAIL_VERIFICATION_URL = 'https://cafe.pootechnologies.tech/tenants/email/verify/'
+FRONTEND_LOGIN_URL = 'https://cafe-front.pootechnologies.tech/login'
+# Direct Django reset page. Change this to a frontend page later if you build one.
+FRONTEND_PASSWORD_RESET_URL = 'https://cafe.pootechnologies.tech/tenants/password/reset-password/'
+
+
 # chapa settings for testing
 CHAPA_PUBLIC_KEY = "CHAPUBK_TEST-V6GJI42oSMRKHrkQgP5P8gH2I34BM3FD"
 CHAPA_SECRET_KEY ="CHASECK_TEST-vrVjpSUyuzegPSk04JSpKXSWyYOy8YYm"

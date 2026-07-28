@@ -40,6 +40,8 @@ class TenantTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         if not user:
             raise AuthenticationFailed('Invalid credentials')
+        if not user.is_active or not getattr(user, 'is_verified', False):
+            raise AuthenticationFailed('Please verify your email before signing in')
 
         # Determine tenant context and enforce membership if logging in inside a specific tenant
         tenant = getattr(request, 'tenant', None)
@@ -89,7 +91,7 @@ class TenantTokenObtainPairSerializer(TokenObtainPairSerializer):
                 if not UserAccount.objects.filter(pk=user.pk, tenants=requested_tenant).exists():
                     raise AuthenticationFailed('User is not a member of the requested tenant')
                 attach_tenant_permissions(requested_tenant.schema_name)
-                data['tenant'] = {'id': requested_tenant.id, 'schema_name': requested_tenant.schema_name}
+                data['tenant'] = {'id': requested_tenant.id, 'schema_name': requested_tenant.schema_name, 'business_category': requested_tenant.business_category.name if requested_tenant.business_category else None}
                 return data
 
         if not tenant or tenant.schema_name == public_name:
@@ -98,7 +100,7 @@ class TenantTokenObtainPairSerializer(TokenObtainPairSerializer):
                 # Exclude the public schema from the membership list
                 qs = user.tenants.exclude(schema_name=public_name).all()
                 for t in qs:
-                    memberships.append({'id': t.id, 'schema_name': t.schema_name, 'name': getattr(t, 'name', None)})
+                    memberships.append({'id': t.id, 'schema_name': t.schema_name, 'name': getattr(t, 'name', None), 'business_category': t.business_category.name if t.business_category else None})
                 data['tenants'] = memberships
 
             # If logging in from public schema, auto-load permissions for the first tenant membership
@@ -106,7 +108,7 @@ class TenantTokenObtainPairSerializer(TokenObtainPairSerializer):
                 attach_tenant_permissions(memberships[0]['schema_name'])
         else:
             attach_tenant_permissions(tenant.schema_name)
-            data['tenant'] = {'id': tenant.id, 'schema_name': tenant.schema_name}
+            data['tenant'] = {'id': tenant.id, 'schema_name': tenant.schema_name, 'business_category': tenant.business_category.name if tenant.business_category else None}
 
         return data
 
