@@ -140,7 +140,7 @@ DATABASE_ROUTERS = [
     "django_tenants.routers.TenantSyncRouter",
 ]
 
-BASE_DOMAIN = "dev-cafe.pootechnologies.tech"
+BASE_DOMAIN = "cafe.pootechnologies.tech"
 PUBLIC_SCHEMA_NAME = "public"
 
 
