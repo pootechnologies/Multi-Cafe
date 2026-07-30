@@ -151,7 +151,7 @@ class CompanyInfo(models.Model):
         return self.en_name
 
     def save(self, *args, **kwargs):
-        if self.image:
+        if self.logo:
             img = Image.open(self.logo)
             
             # --- THIS IS THE MISSING PIECE ---
@@ -164,8 +164,8 @@ class CompanyInfo(models.Model):
             img.save(output_io, format='WEBP', quality=70) # Or 'JPEG'
             output_io.seek(0)
             
-            base_name = self.image.name.split('.')[0]
-            self.image = InMemoryUploadedFile(
+            base_name = self.logo.name.split('.')[0]
+            self.logo = InMemoryUploadedFile(
                 output_io, 'ImageField', f"{base_name}.webp", 'image/webp', sys.getsizeof(output_io), None
             )
             
