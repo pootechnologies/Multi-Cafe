@@ -28,7 +28,7 @@ SECRET_KEY = 'django-insecure-1+wss@qj54==i6=5*q^icmjuur@ss*4ls2pm#gzbiihwih94rv
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = ["*.cafe.pootechnologies.tech", ".cafe.pootechnologies.tech", "cafe.pootechnologies.tech", "45.93.136.48"]
+ALLOWED_HOSTS = ["*.cafe-api.pootechnologies.tech", ".cafe-api.pootechnologies.tech", "cafe-api.pootechnologies.tech", "45.93.136.48"]
 
 
 # Application definition
@@ -140,7 +140,7 @@ DATABASE_ROUTERS = [
     "django_tenants.routers.TenantSyncRouter",
 ]
 
-BASE_DOMAIN = "cafe.pootechnologies.tech"
+BASE_DOMAIN = "cafe-api.pootechnologies.tech"
 PUBLIC_SCHEMA_NAME = "public"
 
 
@@ -230,10 +230,10 @@ DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 # DEFAULT_FROM_EMAIL = 'firewayele89@gmail.com'
 # Direct Django verification link. Change this to your public HTTPS API URL in production.
-EMAIL_VERIFICATION_URL = 'https://cafe.pootechnologies.tech/tenants/email/verify/'
-FRONTEND_LOGIN_URL = 'https://cafe-front.pootechnologies.tech/login'
+EMAIL_VERIFICATION_URL = 'https://cafe-api.pootechnologies.tech/tenants/email/verify/'
+FRONTEND_LOGIN_URL = 'https://cafe-api-front.pootechnologies.tech/login'
 # Direct Django reset page. Change this to a frontend page later if you build one.
-FRONTEND_PASSWORD_RESET_URL = 'https://cafe.pootechnologies.tech/tenants/password/reset-password/'
+FRONTEND_PASSWORD_RESET_URL = 'https://cafe-api.pootechnologies.tech/tenants/password/reset-password/'
 
 
 # chapa settings for testing
