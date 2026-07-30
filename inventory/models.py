@@ -150,6 +150,27 @@ class CompanyInfo(models.Model):
     def __str__(self):
         return self.en_name
 
+    def save(self, *args, **kwargs):
+        if self.image:
+            img = Image.open(self.logo)
+            
+            # --- THIS IS THE MISSING PIECE ---
+            # It downsizes the massive pixel grid to a web-friendly size
+            max_dimensions = (1200, 1200)
+            img.thumbnail(max_dimensions, Image.Resampling.LANCZOS)
+            # ----------------------------------
+
+            output_io = BytesIO()
+            img.save(output_io, format='WEBP', quality=70) # Or 'JPEG'
+            output_io.seek(0)
+            
+            base_name = self.image.name.split('.')[0]
+            self.image = InMemoryUploadedFile(
+                output_io, 'ImageField', f"{base_name}.webp", 'image/webp', sys.getsizeof(output_io), None
+            )
+            
+        super().save(*args, **kwargs)
+
 class Order(models.Model):
     ACTION_CHOICES = [
         ('Receipt', 'Receipt'),
