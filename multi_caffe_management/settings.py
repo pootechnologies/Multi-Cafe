@@ -28,7 +28,7 @@ SECRET_KEY = 'django-insecure-1+wss@qj54==i6=5*q^icmjuur@ss*4ls2pm#gzbiihwih94rv
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = ["*.dev-cafe.pootechnologies.tech", ".dev-cafe.pootechnologies.tech", "dev-cafe.pootechnologies.tech", "45.93.136.48"]
+ALLOWED_HOSTS = ["*.cafe-api.pootechnologies.tech", ".cafe-api.pootechnologies.tech", "cafe-api.pootechnologies.tech", "45.93.136.48"]
 
 
 # Application definition
@@ -75,6 +75,20 @@ MIDDLEWARE = [
 ]
 MIDDLEWARE += [
     "tenants.middleware.TenantPaymentRequiredMiddleware",
+]
+
+# Option B: Explicit list
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'x-schema-name',  # <-- Your custom header
 ]
 
 CORS_ALLOW_ALL_ORIGINS = True 
@@ -140,7 +154,7 @@ DATABASE_ROUTERS = [
     "django_tenants.routers.TenantSyncRouter",
 ]
 
-BASE_DOMAIN = "dev-cafe.pootechnologies.tech"
+BASE_DOMAIN = "cafe-api.pootechnologies.tech"
 PUBLIC_SCHEMA_NAME = "public"
 
 
@@ -230,18 +244,25 @@ DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 # DEFAULT_FROM_EMAIL = 'firewayele89@gmail.com'
 # Direct Django verification link. Change this to your public HTTPS API URL in production.
-EMAIL_VERIFICATION_URL = 'https://cafe.pootechnologies.tech/tenants/email/verify/'
-FRONTEND_LOGIN_URL = 'https://cafe-front.pootechnologies.tech/login'
+EMAIL_VERIFICATION_URL = 'https://cafe-api.pootechnologies.tech/tenants/email/verify/'
+FRONTEND_LOGIN_URL = 'https://cafe.pootechnologies.tech/login'
 # Direct Django reset page. Change this to a frontend page later if you build one.
 FRONTEND_PASSWORD_RESET_URL = 'https://cafe.pootechnologies.tech/tenants/password/reset-password/'
 
 
 # chapa settings for testing
-CHAPA_PUBLIC_KEY = "CHAPUBK_TEST-V6GJI42oSMRKHrkQgP5P8gH2I34BM3FD"
-CHAPA_SECRET_KEY ="CHASECK_TEST-vrVjpSUyuzegPSk04JSpKXSWyYOy8YYm"
+# CHAPA_PUBLIC_KEY = "CHAPUBK_TEST-V6GJI42oSMRKHrkQgP5P8gH2I34BM3FD"
+# CHAPA_SECRET_KEY ="CHASECK_TEST-vrVjpSUyuzegPSk04JSpKXSWyYOy8YYm"
+# CHAPA_BASE_URL = "https://api.chapa.co/v1"
+# CHAPA_VERIFY_URL = f"{CHAPA_BASE_URL}/transaction/verify/<tx_ref>"
+# CHAPA_WEBHOOK_URL = "http://localhost:8000/api/payments/chapa/webhook/"
+
+CHAPA_PUBLIC_KEY = "CHAPUBK-qWdTeATfP4dVt9CwHm51NQLFcx9VnmTi"
+CHAPA_SECRET_KEY ="CHASECK-pbGE1f1nq0Wwb6YeXBkiL62oQhCaWwhE"
 CHAPA_BASE_URL = "https://api.chapa.co/v1"
 CHAPA_VERIFY_URL = f"{CHAPA_BASE_URL}/transaction/verify/<tx_ref>"
-CHAPA_WEBHOOK_URL = "http://localhost:8000/api/payments/chapa/webhook/"
+CHAPA_WEBHOOK_URL = "https://cafe-api.pootechnologies.tech/api/payments/chapa/webhook/"
+FRONTEND_PAYMENT_REDIRECT = "https://cafe.pootechnologies.tech/subscription" # FRONT is not ready yet
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.0/howto/static-files/

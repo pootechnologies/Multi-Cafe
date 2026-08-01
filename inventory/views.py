@@ -270,12 +270,15 @@ class ProductRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
         )    
 
 # //////////////////////////////////////////////////////////////////
-class CustomerListCreateAPIView(APIView):
-   
+class CustomerListCreateAPIView(generics.ListCreateAPIView):
+    queryset = CustomerInfo.objects.all()
+    serializer_class = CustomerInfoSerializer
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+     
     def get(self, request, format=None):
         try:
-
+           
             search_query = request.query_params.get('search', None)
             include_all = request.query_params.get('include_all', '').lower() in ('1', 'true', 'yes')
 
@@ -316,230 +319,123 @@ class CustomerListCreateAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    def post(self, request, format=None):
+    def create(self, request, *args, **kwargs):
         try:
-                        
-            serializer = CustomerInfoSerializer(data=request.data)
-            if not serializer.is_valid():
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            validated_data = serializer.validated_data
-            # serializer.create(validated_data, user=request.user)
-            serializer.create(validated_data)
-            return Response({"message": f"Customer Created successfully."}, status=status.HTTP_201_CREATED)     
+                      
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            headers = self.get_success_headers(serializer.data)
+            return Response(
+                {
+                    "message": f"Customer Created successfully."
+                 }, 
+                 status=status.HTTP_201_CREATED,
+                headers=headers
+                            )     
         except KeyError as e:
             return Response(
                 {"error": f"An error occurred while creating the Customer.  {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
-class CustomerRetrieveUpdateDeleteAPIView(APIView):
+class CustomerRetrieveUpdateDeleteAPIView(generics.RetrieveUpdateDestroyAPIView):
     # permission_classes = (permissions.AllowAny,)
+    queryset = CustomerInfo.objects.all()
+    serializer_class = CustomerInfoSerializer
     authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
-    def get(self, request, pk):
-        try:
-                          
-            if not CustomerInfo.objects.filter(id=pk).exists():
-                return Response(
-                    {"error": "Customer Does not Exist."},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            customer = CustomerInfo.objects.get(id=pk)
-            serializer = CustomerInfoSerializer(customer)
-            return Response(serializer.data, status=status.HTTP_200_OK)      
-        except KeyError as e:
-            return Response(
-                {"error": f"An error occurred while Retriving the Customer.  {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
 
-    def put(self, request, pk):
-        try:
-                          
-            if not CustomerInfo.objects.filter(id=pk).exists():
-                return Response(
-                    {"error": "Customer Does not Exist."},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            customer = CustomerInfo.objects.get(id=pk)
-            serializer = CustomerInfoSerializer(data=request.data)
-            if not serializer.is_valid():
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            validated_data = serializer.validated_data
-            serializer.update(customer, validated_data)
-            return Response({"message": f"Customer Updated successfully."}, status=status.HTTP_200_OK)      
-        except KeyError as e:
-            return Response(
-                {"error": f"An error occurred while updating the Customer.  {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-       
-    def patch(self, request, pk):
-        try:
-                           
-            if not CustomerInfo.objects.filter(id=pk).exists():
-                return Response(
-                    {"error": "Customer Does not Exist."},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            customer = CustomerInfo.objects.get(id=pk) 
-            serializer = CustomerInfoSerializer (customer, data=request.data, partial=True)
-            if not serializer.is_valid():
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            serializer.save()
-            return Response({"message": f"Customer Updated successfully."}, status=status.HTTP_200_OK)      
-        except KeyError as e:
-            return Response(
-                {"error": f"An error occurred while updating the Customer.  {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(
+                {
+                    "message": f"Customer updated successfully."
+                 }, 
+                 status=status.HTTP_200_OK
+                
+                            )   
 
-    def delete(self, request, pk):
-        try:
-                         
-            if not CustomerInfo.objects.filter(id=pk).exists():
-                return Response(
-                    {"error": "Customer Does not Exist."},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            CustomerInfo.objects.get(id=pk).delete()
-            if not CustomerInfo.objects.filter(id=pk).exists():
-                return Response({"message": f"Customer Deleted successfully."},
-                    status=status.HTTP_204_NO_CONTENT
-                )
-            else:
-                return Response(
-                    {"error": "Failed to delete an Customer."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )      
-        except KeyError as e:
-            return Response(
-                {"error": f"An error occurred while Deleting the Customer.  {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response(
+            {
+                "message": "Customer deleted successfully"
+            },
+            status=status.HTTP_204_NO_CONTENT
+        ) 
 
 
-class CompanyListCreateAPIView(APIView):
-    # permission_classes = (permissions.AllowAny,)
+class CompanyListCreateAPIView(generics.ListCreateAPIView):
+    queryset = CompanyInfo.objects.all()
+    serializer_class = CompanyInfoSerializer
     authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
-    def get(self, request, format=None):
+    
+    def create(self, request, *args, **kwargs):
         try:
-            
-            company = CompanyInfo.objects.all()
-            serializer = CompanyInfoSerializer(company, many=True)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-            
                       
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            headers = self.get_success_headers(serializer.data)
+            return Response(
+                {
+                    "message": f"Company Created successfully."
+                 }, 
+                 status=status.HTTP_201_CREATED,
+                headers=headers
+                            )     
         except KeyError as e:
             return Response(
-                {"error": f"An error occurred while Retriving the Company.  {str(e)}"},
+                {"error": f"An error occurred while creating the Company.  {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    def post(self, request, format=None):
-        try:
-             
-            serializer = CompanyInfoSerializer(data=request.data)
-            if not serializer.is_valid():
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-            validated_data = serializer.validated_data
-            validated_data['user'] = user
-            serializer.create(validated_data, user=request.user)
-            return Response({"message": f"Company Created successfully."}, status=status.HTTP_201_CREATED)
-
-        except KeyError as e:
-            print(e)
-            return Response(
-                {"error": f"An error occurred while Creating the Company.  {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-class CompanyRetrieveUpdateDeleteAPIView(APIView):
-    # permission_classes = (permissions.AllowAny,)
+class CompanyRetrieveUpdateDeleteAPIView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = CompanyInfo.objects.all()
+    serializer_class = CompanyInfoSerializer
     authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
-
-    def get(self, request, pk):
-        try:
-                         
-            if not CompanyInfo.objects.filter(id=pk).exists():
-                return Response(
-                    {"error": "Company Does not Exist."},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            company = CompanyInfo.objects.get(id=pk)
-            serializer = CompanyInfoSerializer(company)
-            return Response(serializer.data, status=status.HTTP_200_OK)      
-        except KeyError as e:
-            return Response(
-                {"error": f"An error occurred while Retriving the Company.  {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
     
-    def put(self, request, pk):
+    def update(self, request, *args, **kwargs):
         try:
-           
-            if not CompanyInfo.objects.filter(id=pk).exists():
-                return Response(
-                    {"error": "Company Does not Exist."},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            company = CompanyInfo.objects.get(id=pk)
-            serializer = CompanyInfoSerializer(data=request.data)
-            if not serializer.is_valid():
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            validated_data = serializer.validated_data
-            serializer.update(company, validated_data)
-            return Response({"message": f"Company Updated successfully."}, status=status.HTTP_200_OK)        
-        except KeyError as e:
-            return Response(
-                {"error": f"An error occurred while updating the Company.  {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-    
-    def patch(self, request, pk):
-        try:
-                     
-            if not CompanyInfo.objects.filter(id=pk).exists():
-                return Response(
-                    {"error": "Company Does not Exist."},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            company = CompanyInfo.objects.get(id=pk)    
-            serializer = CompanyInfoSerializer(company, data=request.data, partial=True)
-            if not serializer.is_valid():
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            partial = kwargs.pop('partial', False)
+            instance = self.get_object()
+            serializer = self.get_serializer(instance, data=request.data, partial=partial)
+            serializer.is_valid(raise_exception=True)
             serializer.save()
-            return Response({"message": f"Company Updated successfully."}, status=status.HTTP_200_OK)      
+            return Response(
+                    {
+                        "message": f"Company updated successfully."
+                    }, 
+                    status=status.HTTP_200_OK
+                    
+                                )
         except KeyError as e:
             return Response(
                 {"error": f"An error occurred while updating the Company.  {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-    
-    def delete(self, request, pk):
+        
+    def destroy(self, request, *args, **kwargs):
         try:
-                          
-            if not CompanyInfo.objects.filter(id=pk).exists():
-                return Response(
-                    {"error": "Company Does not Exist."},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            CompanyInfo.objects.get(id=pk).delete()
-            if not CompanyInfo.objects.filter(id=pk).exists():
-                return Response({"message": f"Company Deleted successfully."},
-                    status=status.HTTP_204_NO_CONTENT
-                )
-            else:
-                return Response(
-                    {"error": "Failed to delete an Company."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )      
+            instance = self.get_object()
+            self.perform_destroy(instance)
+            return Response(
+                {
+                    "message": "Company deleted successfully"
+                },
+                status=status.HTTP_204_NO_CONTENT
+            )
         except KeyError as e:
             return Response(
-                {"error": f"An error occurred while Deleting the Company.  {str(e)}"},
+                {"error": f"An error occurred while deleting the Company.  {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -977,35 +873,21 @@ class CountNearExpirationDateProductAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-class ExpenseTypesListCreateAPIView(APIView):
+class ExpenseTypesListCreateAPIView(generics.ListCreateAPIView):
+    queryset = ExpenseTypes.objects.all().order_by('id')
+    serializer_class = ExpenseTypesSerializer
     authentication_classes = [JWTAuthentication, SessionAuthentication]
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant] 
 
-    # permission_classes = (permissions.AllowAny,)
-    def get(self, request, format=None):
-        try:
-            
-            expense_type = ExpenseTypes.objects.all().order_by('id')
-            serializer = ExpenseTypesSerializer(expense_type, many=True)
-            return Response(serializer.data, status=status.HTTP_200_OK)              
-                      
-        except KeyError as e:
-            return Response(
-                {"error": f"An error occurred while Retriving the Expense Types.  {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    def post(self, request, format=None):
+    def create(self, request, *args, **kwargs):
         try:
             
 
-            serializer = ExpenseTypesSerializer(data=request.data)
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
             if not serializer.is_valid():
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-            validated_data = serializer.validated_data
-            # serializer.create(validated_data, user=request.user)
-            serializer.create(validated_data)
+            serializer.save()
             return Response({"message": f"Expense Types created successfully."}, status=status.HTTP_201_CREATED)
                       
         except KeyError as e:
@@ -1015,214 +897,82 @@ class ExpenseTypesListCreateAPIView(APIView):
             )
 
 class ExpenseTypesRetrieveUpdateDeleteAPIView(APIView):
+    queryset = ExpenseTypes.objects.all().order_by('id')
+    serializer_class = ExpenseTypesSerializer
     authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
-    # permission_classes = (permissions.AllowAny,)
-    def get(self, request, pk):
-        try:
-           
-            if not ExpenseTypes.objects.filter(id=pk).exists():
-                return Response(
-                    {"error": "Expense Types Does not Exist."},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            expense_type = ExpenseTypes.objects.get(id=pk)
-            serializer = ExpenseTypesSerializer(expense_type)
-            return Response(serializer.data, status=status.HTTP_200_OK)     
-        except KeyError as e:
-            return Response(
-                {"error": f"An error occurred while Retriving the Expense Types.  {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+    
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(
+            {"message": f"Expense Types Updated successfully."},
+              status=status.HTTP_200_OK) 
 
-    def put(self, request, pk):
-        try:
-                        
-            if not ExpenseTypes.objects.filter(id=pk).exists():
-                return Response(
-                    {"error": "Expense Types Does not Exist."},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            expense_type = ExpenseTypes.objects.get(id=pk)
-            serializer = ExpenseTypesSerializer(data=request.data)
-            if not serializer.is_valid():
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            validated_data = serializer.validated_data
-            serializer.update(expense_type, validated_data)
-            return Response({"message": f"Expense Types Updated successfully."}, status=status.HTTP_200_OK)      
-        except KeyError as e:
-            return Response(
-                {"error": f"An error occurred while updating the Expense Types.  {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-        
-    def patch(self, request, pk):
-        try:
-                         
-            if not ExpenseTypes.objects.filter(id=pk).exists():
-                return Response(
-                    {"error": "Expense Types Does not Exist."},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            expense_type = ExpenseTypes.objects.get(id=pk)    
-            serializer = ExpenseTypesSerializer(expense_type, data=request.data, partial=True)
-            if not serializer.is_valid():
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            serializer.save()
-            return Response({"message": f"Expense Types Updated successfully."}, status=status.HTTP_200_OK)      
-        except KeyError as e:
-            return Response(
-                {"error": f"An error occurred while updating the Expense Types.  {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    def delete(self, request, pk):
-        try:
-                        
-            if not ExpenseTypes.objects.filter(id=pk).exists():
-                return Response(
-                    {"error": "Expense Types Does not Exist."},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            ExpenseTypes.objects.get(id=pk).delete()
-            if not ExpenseTypes.objects.filter(id=pk).exists():
-                return Response({"message": f"Expense Types Deleted successfully."},
-                    status=status.HTTP_204_NO_CONTENT   
-                )
-            else:
-                return Response(
-                    {"error": "Failed to delete an Expense Types."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )      
-        except KeyError as e:
-            return Response(
-                {"error": f"An error occurred while Delete the Expense Types.  {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        # return super().update(request, *args, **kwargs)
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response(
+            {
+                "message": "Expense Types deleted successfully"
+            },
+            status=status.HTTP_204_NO_CONTENT
+        )  
 
 
-class OtherExpensesListCreateAPIView(APIView):
+class OtherExpensesListCreateAPIView(generics.ListCreateAPIView):
+    queryset = OtherExpenses.objects.all().order_by('-id')
+    serializer_class = OtherExpensesGetSerializer
     authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
-    # permission_classes = (permissions.AllowAny,)
-    def get(self, request, format=None):
+
+
+    def create(self, request, *args, **kwargs):
         try:
             
-            other_expenses = OtherExpenses.objects.all().order_by('-id')
-            serializer = OtherExpensesGetSerializer(other_expenses, many=True)
-            return Response(serializer.data, status=status.HTTP_200_OK)              
-                      
-        except KeyError as e:
-            return Response(
-                {"error": f"An error occurred while Retriving Other Expenses.  {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    def post(self, request, format=None):
-        try:
-          
-
-            serializer = OtherExpensesSerializer(data=request.data)
-            if not serializer.is_valid():
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-            validated_data = serializer.validated_data
-            # serializer.create(validated_data, user=request.user)
-            serializer.create(validated_data)
-            # return Response({"message": f"Other Expenses created successfully."}, status=status.HTTP_201_CREATED)
-            return Response({"data": serializer.data}, status=status.HTTP_201_CREATED)
-                      
-        except KeyError as e:
-            return Response(
-                {"error": f"An error occurred while creating Other Expenses.  {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-class OtherExpensesRetrieveUpdateDeleteAPIView(APIView):
-    authentication_classes = [JWTAuthentication, SessionAuthentication]
-    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
-    # permission_classes = (permissions.AllowAny,)
-    def get(self, request, pk):
-        try:
-           
-            if not OtherExpenses.objects.filter(id=pk).exists():
-                return Response(
-                    {"error": "Other Expenses Does not Exist."},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            other_expenses = OtherExpenses.objects.get(id=pk)
-            serializer = OtherExpensesGetSerializer(other_expenses)
-            return Response(serializer.data, status=status.HTTP_200_OK)     
-        except KeyError as e:
-            return Response(
-                {"error": f"An error occurred while Retriving Other Expenses.  {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    def put(self, request, pk):
-        try:
-                        
-            if not OtherExpenses.objects.filter(id=pk).exists():
-                return Response(
-                    {"error": "Other Expenses Does not Exist."},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            other_expenses = OtherExpenses.objects.get(id=pk)
-            serializer = OtherExpensesSerializer(data=request.data)
-            if not serializer.is_valid():
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            validated_data = serializer.validated_data
-            serializer.update(other_expenses, validated_data)
-            return Response({"message": f"Other Expenses Updated successfully."}, status=status.HTTP_200_OK)      
-        except KeyError as e:
-            return Response(
-                {"error": f"An error occurred while updating Other Expenses  {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-        
-    def patch(self, request, pk):
-        try:
-                        
-            if not OtherExpenses.objects.filter(id=pk).exists():
-                return Response(
-                    {"error": "Other Expenses Does not Exist."},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            other_expenses = OtherExpenses.objects.get(id=pk)    
-            serializer = OtherExpensesSerializer(other_expenses, data=request.data, partial=True)
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
             if not serializer.is_valid():
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             serializer.save()
-            return Response({"message": f"Other Expenses Updated successfully."}, status=status.HTTP_200_OK)      
+            return Response({"message": f"Expense Types created successfully."}, status=status.HTTP_201_CREATED)
+                      
         except KeyError as e:
             return Response(
-                {"error": f"An error occurred while updating Other Expenses.  {str(e)}"},
+                {"error": f"An error occurred while creating the Expense Types.  {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    def delete(self, request, pk):
-        try:
-                         
-            if not OtherExpenses.objects.filter(id=pk).exists():
-                return Response(
-                    {"error": "Other Expenses Does not Exist."},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            OtherExpenses.objects.get(id=pk).delete()
-            if not OtherExpenses.objects.filter(id=pk).exists():
-                return Response({"message": f"Other Expenses Deleted successfully."},
-                    status=status.HTTP_204_NO_CONTENT   
-                )
-            else:
-                return Response(
-                    {"error": "Failed to delete Other Expenses."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )      
-        except KeyError as e:
-            return Response(
-                {"error": f"An error occurred while Delete Other Expenses.  {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+class OtherExpensesRetrieveUpdateDeleteAPIView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = OtherExpenses.objects.all().order_by('-id')
+    serializer_class = OtherExpensesGetSerializer
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
+    permission_classes = [permissions.IsAuthenticated, IsTenantUser, HasModelPermissionForTenant]
+    
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(
+            {"message": f"Other Expenses Updated successfully."},
+              status=status.HTTP_200_OK) 
+
+        # return super().update(request, *args, **kwargs)
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response(
+            {
+                "message": "Other Expenses deleted successfully"
+            },
+            status=status.HTTP_204_NO_CONTENT
+        )    
 
 
 class RetriveTotalProductCostAPIView(APIView):
@@ -1636,37 +1386,6 @@ class ProductLogAPIView(APIView):
                 {"error": f"An error occurred while Retriving the Product Log.  {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
-
-
-# class ProductWithBundleAPIView(APIView):
-#     # permission_classes = [AllowAny]
-#     def get(self, request): 
-#         try:     
-#             product_with_bundle = Product.objects.filter(is_bundle=True) 
-
-#             serializer = ProductGetSerializer(product_with_bundle, many=True)
-#             return Response(serializer.data, status=status.HTTP_200_OK)       
-#         except KeyError as e:
-#             return Response(
-#                 {"error": f"An error occurred while Retriving the Product With Bundle.  {str(e)}"},
-#                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
-#             )
-
-
-# class ProductWithOutBundleAPIView(APIView):
-#     # permission_classes = [AllowAny]
-#     def get(self, request): 
-#         try:     
-#             product_without_bundle = Product.objects.filter(is_bundle=False)
-
-#             serializer = ProductGetSerializer(product_without_bundle, many=True)
-#             return Response(serializer.data, status=status.HTTP_200_OK)       
-#         except KeyError as e:
-#             return Response(
-#                 {"error": f"An error occurred while Retriving the Product With Out Bundle.  {str(e)}"},
-#                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
-#             )
 
 
 class TotalOrderAPIView(APIView):

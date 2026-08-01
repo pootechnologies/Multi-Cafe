@@ -26,3 +26,5 @@ venv_caffe
 ./multi_caffe_management/settings.py
 
 
+tenants/migrations
+inventory/migrations
