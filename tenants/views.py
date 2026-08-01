@@ -104,7 +104,7 @@ def _send_verification_email(request, user):
     uid = urlsafe_base64_encode(force_bytes(user.pk))
     token = email_verification_token.make_token(user)
     verification_url = getattr(
-        settings, "EMAIL_VERIFICATION_URL", "https://cafe.pootechnologies.tech/tenants/email/verify/"
+        settings, "EMAIL_VERIFICATION_URL", "https://cafe-api.pootechnologies.tech/tenants/email/verify/"
     )
     verification_url = f"{verification_url}?uid={uid}&token={token}"
     send_mail(
@@ -220,17 +220,15 @@ class PasswordResetConfirmView(APIView):
         """A minimal reset page for deployments without a separate frontend."""
         uid = escape(request.query_params.get("uid", ""))
         token = escape(request.query_params.get("token", ""))
-        return HttpResponse(
-            f'''<!doctype html><html><body>
-                   <h1>Reset password</h1>
-                     <form method="post">
-                     <input type="hidden" name="uid" value="{uid}">
-                     <input type="hidden" name="token" value="{token}">
-                     <label>New password <input type="password" name="password" required></label>
-                     <button type="submit">Reset password</button>
-                     </form></body></html>''',
-            content_type="text/html",
+        frontend_url = getattr(
+            settings,
+            "FRONTEND_PASSWORD_RESET_URL",
+            "https://cafe.pootechnologies.tech/password/reset",
         )
+
+        query_string = urlencode({"uid": uid, "token": token})
+        redirect_url = f"{frontend_url}?{query_string}" if query_string else frontend_url
+        return redirect(redirect_url)
 
     def post(self, request):
         payload = request.data if request.content_type == "application/json" else request.POST
@@ -272,6 +270,13 @@ class PasswordResetConfirmView(APIView):
 class ChapaPaymentInitView(generics.GenericAPIView):
     serializer_class = ChapaInitSerializer
 
+    def get(self, request, *args, **kwargs):
+        #return a list of all payments for the current tenant
+
+        tenant = request.tenant
+        payment = TenantPayment.objects.filter(tenant=tenant).order_by('-created_at')
+        return Response({"payments": ChapaInitSerializer(payment, many=True).data}, status=status.HTTP_200_OK)
+
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -306,8 +311,8 @@ class ChapaPaymentInitView(generics.GenericAPIView):
         customization_title = (plan.name or "Subscription")[:16]       
 
         reference = str(uuid.uuid4())
-        callback_url = f"https://{tenant if tenant else 'default'}.cafe.pootechnologies.tech/api/chapa-verify/{reference}/"  # Adjust as needed for your domain and route
-        return_url = f"https://{tenant if tenant else 'default'}.cafe.pootechnologies.tech/api/chapa-verify/{reference}/"  # Adjust as needed for your domain and route
+        callback_url = f"https://{tenant if tenant else 'default'}.cafe-api.pootechnologies.tech/api/chapa-verify/{reference}/"  # Adjust as needed for your domain and route
+        return_url = f"https://{tenant if tenant else 'default'}.cafe-api.pootechnologies.tech/api/chapa-verify/{reference}/"  # Adjust as needed for your domain and route
         chapa_data = {
             "amount": str(plan.price),
             "currency": "ETB",
