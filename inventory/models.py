@@ -161,6 +161,7 @@ class Order(models.Model):
     user_email = models.CharField(max_length=255, default="User@gmail.com", null=True, blank=True)
     user_role = models.CharField(max_length=255, default="Salesman", null=True, blank=True)
     item_pending = models.PositiveIntegerField(null=True, blank=True)
+    ordered_by = models.CharField(max_length=255, default="User", null=True, blank=True)
 
     def str(self):
         return self.customer
