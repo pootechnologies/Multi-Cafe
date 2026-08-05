@@ -582,7 +582,7 @@ class OrderLightSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Order
-        fields = ['id', 'customer', 'customer_name', 'status', 'receipt', 'receipt_id', 'order_date', 'sub_total', 'vat',  'total_amount', 'payment_status', 'paid_amount', 'credit', 'unpaid_amount', 'user', 'number_of_items']
+        fields = ['id', 'customer', 'customer_name', 'status', 'receipt', 'receipt_id', 'order_date', 'sub_total', 'vat',  'total_amount', 'payment_status', 'paid_amount', 'credit', 'unpaid_amount', 'user', 'number_of_items', 'ordered_by']
 
 
 class OrderSerializer(serializers.ModelSerializer):
