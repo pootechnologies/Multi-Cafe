@@ -54,6 +54,15 @@ class Supplier(models.Model):
     def __str__(self):
         return self.name
 
+class Waiter(models.Model):
+    name = models.CharField(max_length=200, blank=True, null=True)
+    contact_info = models.CharField(max_length=50, null=True, blank=True)
+    user = models.CharField(max_length=255, default="User", null=True, blank=True)
+
+    def __str__(self):
+        return self.name
+
+
 class Product(models.Model):
     name = models.CharField(max_length=200, blank=False, null=False)
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True)
