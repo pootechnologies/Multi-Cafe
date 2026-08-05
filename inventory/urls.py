@@ -91,16 +91,16 @@ urlpatterns = [
     path('orders/', OrderListCreatView.as_view(), name='orders-create'),
     path('orders/<int:pk>/', OrderDetailView.as_view(), name='orders-retrieve'),
 
-    path('orderitems', OrderItemListCreateView.as_view(), name='orders-items-list'),
-    path('orderitems/<pk>', OrderItemDetailView.as_view(), name='orders-items-retrieve'),
+    path('orderitems/', OrderItemListCreateView.as_view(), name='orders-items-list'),
+    path('orderitems/<int:pk>/', OrderItemDetailView.as_view(), name='orders-items-retrieve'),
 
-    path('orders-credit', OrderCreditListAPIView.as_view(), name='orders-credit-list'),
-    path('orderitems-credit', OrderItemCreditListView.as_view(), name='orders-credit-items-list'),
-    path('customers', CustomerListCreateAPIView.as_view(), name='customers-list'),
-    path('customers/<pk>', CustomerRetrieveUpdateDeleteAPIView.as_view(), name='customers-retrieve'),
+    path('orders-credit/', OrderCreditListAPIView.as_view(), name='orders-credit-list'),
+    path('orderitems-credit/', OrderItemCreditListView.as_view(), name='orders-credit-items-list'),
+    path('customers/', CustomerListCreateAPIView.as_view(), name='customers-list'),
+    path('customers/<int:pk>/', CustomerRetrieveUpdateDeleteAPIView.as_view(), name='customers-retrieve'),
     
-    path('company', CompanyListCreateAPIView.as_view(), name='company-list'),
-    path('company/<pk>', CompanyRetrieveUpdateDeleteAPIView.as_view(), name='company-retrieve'),
+    path('company/', CompanyListCreateAPIView.as_view(), name='company-list'),
+    path('company/<int:pk>/', CompanyRetrieveUpdateDeleteAPIView.as_view(), name='company-retrieve'),
     path('revenue/', RetriveRevenueAPIView.as_view(), name='revenue-retrieve'),
     path('profit/', RetriveProfitAPIView.as_view(), name='profit-retrieve'),
     path('report/', ExcelReportAPIView.as_view(), name='report-retrieve'),
@@ -108,17 +108,17 @@ urlpatterns = [
     path('stock/', ListOutOFStockProductAPIView.as_view(), name='stock-shortage-retrieve'),
     path('stock_count/', CountNearExpirationDateProductAPIView.as_view(), name='stock-shortage-count-retrieve'),
 
-    path('expense_type', ExpenseTypesListCreateAPIView.as_view(), name='expense_type-list'),
-    path('expense_type/<pk>', ExpenseTypesRetrieveUpdateDeleteAPIView.as_view(), name='expense_type-retrieve'),
+    path('expense_type/', ExpenseTypesListCreateAPIView.as_view(), name='expense_type-list'),
+    path('expense_type/<int:pk>/', ExpenseTypesRetrieveUpdateDeleteAPIView.as_view(), name='expense_type-retrieve'),
 
-    path('other_expenses', OtherExpensesListCreateAPIView.as_view(), name='other_expenses-list'),
-    path('other_expenses/<pk>', OtherExpensesRetrieveUpdateDeleteAPIView.as_view(), name='other_expenses-retrieve'),
+    path('other_expenses/', OtherExpensesListCreateAPIView.as_view(), name='other_expenses-list'),
+    path('other_expenses/<int:pk>/', OtherExpensesRetrieveUpdateDeleteAPIView.as_view(), name='other_expenses-retrieve'),
     path('product_report/', ProductExcelReportAPIView.as_view(), name='product-report-retrieve'),
     path('product_cost/', RetriveTotalProductCostAPIView.as_view(), name='total-product-cost-retrieve'),
 
-    path('products_supplier/<pk>', ProductsPerSupplierAPIView.as_view(), name='products-per-supplier'),
+    path('products_supplier/<int:pk>/', ProductsPerSupplierAPIView.as_view(), name='products-per-supplier'),
 
-    path('orders/<pk>/receipt/', OrderReceiptAPIView.as_view(), name='order-receipt'),
+    path('orders/<int:pk>/receipt/', OrderReceiptAPIView.as_view(), name='order-receipt'),
     path('sales-dashboard/', SalesPersonDashboardAPIView.as_view(), name='salesperson-dashboard'),
     path('recent-orders/', RecentOrderLimitedAPIView.as_view(), name='recent-orders-limited'),
     path('salesperson-revenue/', RetriveSalesPersonRevenueAPIView.as_view(), name='salesperson-revenue-retrieve'),
@@ -137,7 +137,7 @@ urlpatterns = [
     path('export/products/', ExportProductExcelAPIView.as_view(), name='export-products-excel'),
     path('import/products/', ImportProductExcelAPIView.as_view(), name='export-products-excel'),
 
-    path('orders/<int:order_id>/logs', OrderLogListView.as_view(), name='order-logs'),
+    path('orders/<int:order_id>/logs/', OrderLogListView.as_view(), name='order-logs'),
     path('product_log/', ProductLogAPIView.as_view(), name='product-log-retrieve'),
 
     # path('product_with_bundle/', ProductWithBundleAPIView.as_view(), name='product-with-bundle-retrieve'),
