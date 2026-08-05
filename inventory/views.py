@@ -450,7 +450,7 @@ class OrderListCreatView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         # only fetch id, name, email from the DB
-        return Order.objects.only('id', 'customer', 'customer__name', 'status', 'receipt', 'receipt_id', 'order_date', 'sub_total', 'vat',  'total_amount', 'payment_status', 'paid_amount', 'unpaid_amount', 'credit', 'user').select_related('customer').filter(credit=False).order_by('-id')
+        return Order.objects.only('id', 'customer', 'customer__name', 'status', 'receipt', 'receipt_id', 'order_date', 'sub_total', 'vat',  'total_amount', 'payment_status', 'paid_amount', 'unpaid_amount', 'credit', 'user', 'ordered_by').select_related('customer').filter(credit=False).order_by('-id')
 
 
     def get_serializer_class(self):
