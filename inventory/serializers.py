@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import (
-    Product, Supplier, Order, OrderItem, CustomerInfo,  
+    Product, Supplier, Waiter, Order, OrderItem, CustomerInfo,  
     Category, CompanyInfo, OrderLog, Report, ExpenseTypes, 
     OtherExpenses, OrderPaymentLog, ProductLog
 )
@@ -28,6 +28,19 @@ class SupplierSerializer(serializers.ModelSerializer):
         if req and getattr(req, 'user', None):
             validated_data['user'] = req.user.email
         return super().create(validated_data)    
+
+class WaiterSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Waiter
+        fields = '__all__'
+
+    def create(self, validated_data):
+        req = self.context.get('request')
+        if req and getattr(req, 'user', None):
+            validated_data['user'] = req.user.email
+        return super().create(validated_data) 
+
+
 class CategorySerializer(serializers.ModelSerializer):
     name = serializers.CharField(validators=[])  # Disable default unique validator
 
